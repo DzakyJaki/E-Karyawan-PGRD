@@ -2,10 +2,15 @@ import React, { useEffect } from 'react';
 import { Tabs, router } from 'expo-router';
 import { theme } from '../../core/theme';
 import { MaterialIcons } from '@expo/vector-icons';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 8);
+  const tabHeight = 60 + (insets.bottom > 0 ? insets.bottom : (Platform.OS === 'android' ? 8 : 4));
+
   useEffect(() => {
     const checkToken = async () => {
       const token = await AsyncStorage.getItem('userToken');
@@ -31,9 +36,9 @@ export default function TabsLayout() {
         backgroundColor: theme.colors.card,
         borderTopWidth: 1,
         borderTopColor: theme.colors.border,
-        height: 60,
-        paddingBottom: 8,
-        paddingTop: 8,
+        height: tabHeight,
+        paddingBottom: bottomPadding,
+        paddingTop: 6,
       },
       tabBarActiveTintColor: theme.colors.primaryLight,
       tabBarInactiveTintColor: theme.colors.textMuted,

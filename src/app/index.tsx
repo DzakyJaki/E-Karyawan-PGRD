@@ -1,9 +1,7 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { View, Text, StyleSheet, Animated, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
-import { MaterialIcons } from '@expo/vector-icons';
-import { theme } from '../core/theme';
 
 export default function Index() {
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
@@ -33,15 +31,18 @@ export default function Index() {
     };
     
     checkAuth();
-  }, []);
+  }, [fadeAnim]);
 
   return (
     <View style={styles.splashContainer}>
       <Animated.View style={[styles.logoWrapper, { opacity: fadeAnim }]}>
-        <View style={styles.logoCircle}>
-          <MaterialIcons name="business" size={70} color={theme.colors.primary} />
+        <View style={styles.logoBox}>
+          <Image 
+            source={require('@/assets/images/icon.png')} 
+            style={styles.logoImage} 
+            resizeMode="cover"
+          />
         </View>
-        <Text style={styles.splashTitle}>E-Karyawan</Text>
         <Text style={styles.splashSubtitle}>Sistem Informasi Karyawan</Text>
       </Animated.View>
     </View>
@@ -51,38 +52,36 @@ export default function Index() {
 const styles = StyleSheet.create({
   splashContainer: {
     flex: 1,
-    backgroundColor: theme.colors.primary,
+    backgroundColor: '#032a55',
     justifyContent: 'center',
     alignItems: 'center',
   },
   logoWrapper: {
     alignItems: 'center',
   },
-  logoCircle: {
-    width: 120,
-    height: 120,
+  logoBox: {
+    width: 140,
+    height: 140,
     backgroundColor: '#fff',
-    borderRadius: 60,
+    borderRadius: 32,
+    overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
-    elevation: 10,
+    marginBottom: 24,
+    elevation: 12,
     shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 }
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 }
   },
-  splashTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 8,
-    letterSpacing: 1
+  logoImage: {
+    width: '100%',
+    height: '100%',
   },
   splashSubtitle: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.8)',
-    fontWeight: '500',
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '600',
     letterSpacing: 2,
     textTransform: 'uppercase'
   }

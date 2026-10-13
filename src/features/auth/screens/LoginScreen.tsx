@@ -14,7 +14,8 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   Keyboard,
-  View
+  View,
+  Image
 } from 'react-native';
 import { theme } from '../../../core/theme';
 
@@ -90,7 +91,11 @@ export function LoginScreen() {
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.logoCircle}>
-              <MaterialIcons name="business" size={60} color={theme.colors.primary} />
+              <Image 
+                source={require('@/assets/images/icon.png')} 
+                style={styles.logoImage} 
+                resizeMode="cover"
+              />
             </View>
             <Text style={styles.title}>E-Karyawan</Text>
             <Text style={styles.subtitle}>Sistem Informasi Karyawan</Text>
@@ -113,6 +118,7 @@ export function LoginScreen() {
                 <TextInput
                   style={styles.input}
                   placeholder="Masukkan email"
+                  placeholderTextColor="#94a3b8"
                   value={email}
                   onChangeText={(text) => {
                     setEmail(text);
@@ -146,6 +152,7 @@ export function LoginScreen() {
                 <TextInput
                   style={styles.input}
                   placeholder="Masukkan password"
+                  placeholderTextColor="#94a3b8"
                   value={password}
                   onChangeText={(text) => {
                     setPassword(text);
@@ -216,12 +223,23 @@ const styles = StyleSheet.create({
     shadowOffset: { height: 5, width: 0 }
   },
   logoCircle: {
-    width: 100, height: 100,
+    width: 96,
+    height: 96,
     backgroundColor: '#fff',
-    borderRadius: 50,
+    borderRadius: 24,
+    overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { height: 4, width: 0 }
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
   },
   title: { fontSize: 28, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
   subtitle: { fontSize: 14, color: 'rgba(255,255,255,0.8)' },
