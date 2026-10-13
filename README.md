@@ -1,6 +1,6 @@
-# E-Karyawan Mobile App (HRIS) - PT. Dumai
+# E-Karyawan Mobile App (HRIS)
 
-Aplikasi Mobile HRIS (Human Resource Information System) untuk karyawan PT. Dumai berbasis **React Native** & **Expo SDK 54** (Expo Router).
+Aplikasi Mobile HRIS (Human Resource Information System) untuk karyawan berbasis **React Native** & **Expo SDK 54** (Expo Router).
 
 ## 🚀 Fitur Utama
 
