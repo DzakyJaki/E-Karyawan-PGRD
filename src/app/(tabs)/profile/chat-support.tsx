@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, FlatList, Modal, ScrollView } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Stack, useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { FlatList, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { theme } from '../../../core/theme';
 
 interface TutorialTopic {
@@ -122,7 +122,7 @@ export default function ChatSupportScreen() {
         {
           id: 'welcome-1',
           type: 'bot',
-          text: `Halo, ${cleanName}! 👋\n\nSelamat datang di Pusat Panduan & Tutorial Aplikasi E-Karyawan PT. Dumai.\n\nSilakan pilih topik panduan fitur pada tombol di bawah, lalu tekan Kirim untuk menampilkan petunjuk penggunaannya:`,
+          text: `Halo, ${cleanName}! 👋\n\nSelamat datang di Pusat Panduan & Tutorial Aplikasi E-Karyawan.\n\nSilakan pilih topik panduan fitur pada tombol di bawah, lalu tekan Kirim untuk menampilkan petunjuk penggunaannya:`,
           time: currentTime
         }
       ]);
