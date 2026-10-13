@@ -11,6 +11,10 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://dieselmart.pagaruyungdiesel.cloud",
+        "EXPO_PUBLIC_USE_RN_FETCH": "1"
       }
     },
     "production": {
