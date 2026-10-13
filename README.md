@@ -1,56 +1,44 @@
-# Welcome to your Expo app 👋
+# E-Karyawan Mobile App (HRIS) - PT. Dumai
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplikasi Mobile HRIS (Human Resource Information System) untuk karyawan PT. Dumai berbasis **React Native** & **Expo SDK 54** (Expo Router).
 
-## Get started
+## 🚀 Fitur Utama
 
-1. Install dependencies
+- **Presensi GPS & Selfie**: Presensi kehadiran masuk/pulang dengan validasi radius GPS kantor cabang dan foto live.
+- **Pengajuan Cuti**: Formulir pengajuan cuti, pelacakan kuota cuti tahunan, dan status persetujuan.
+- **Pengajuan Lembur**: Pencatatan jam kerja lembur mandiri dan riwayat lembur.
+- **Slip Gaji Digital**: Akses rincian slip gaji bulanan terlindungi autentikasi PIN & Biometrik, dengan fitur cetak PDF / berbagi slip.
+- **Profil & Keamanan Akun**: Pengaturan profil karyawan, ubah kata sandi, setup PIN keamanan 6-digit, serta autentikasi biometrik (Fingerprint).
+- **Pusat Panduan & Tutorial**: Panduan interaktif fitur aplikasi dengan navigasi pintas langsung ke halaman terkait.
 
+## 🛠️ Teknologi & Stack
+
+- **Framework**: [Expo](https://expo.dev) (SDK 54) & [React Native](https://reactnative.dev)
+- **Routing**: [Expo Router](https://docs.expo.dev/router/introduction/) (File-based routing)
+- **Icons**: `@expo/vector-icons` (MaterialIcons)
+- **Storage**: `@react-native-async-storage/async-storage`
+- **Security**: `expo-local-authentication` (Biometrics)
+
+## 📦 Menjalankan Project
+
+1. **Clone repository**:
+   ```bash
+   git clone https://github.com/jakfarshodiq230/hris-karyawan-react-native.git
+   cd hris-karyawan-react-native
+   ```
+
+2. **Install dependensi**:
    ```bash
    npm install
    ```
 
-2. Start the app
+3. **Konfigurasi Environment**:
+   Salin file `.env.example` menjadi `.env` dan sesuaikan URL backend API:
+   ```bash
+   cp .env.example .env
+   ```
 
+4. **Jalankan aplikasi**:
    ```bash
    npx expo start
    ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
