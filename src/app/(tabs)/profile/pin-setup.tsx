@@ -1,60 +1,75 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { theme } from '../../../core/theme';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useConfirm } from '../../../core/ConfirmContext';
+import { useToast } from '../../../core/ToastContext';
 
 export default function PinSetupScreen() {
   const router = useRouter();
-  
-  // States untuk pengaturan utama
-  const [isPinActive, setIsPinActive] = useState(false);
+  const { showConfirm } = useConfirm();
+  const { showToast } = useToast();
+
+  const [hasPin, setHasPin] = useState(false);
   const [isSettingUp, setIsSettingUp] = useState(false);
 
-  // States untuk pembuatan PIN
+  // States untuk input PIN 2 langkah
   const [pin, setPin] = useState('');
   const [step, setStep] = useState(1);
   const [firstPin, setFirstPin] = useState('');
-  const { showConfirm } = useConfirm();
 
-  React.useEffect(() => {
-    const loadPinSettings = async () => {
-      const active = await AsyncStorage.getItem('app_pin_active');
-      if (active === 'true') setIsPinActive(true);
-    };
-    loadPinSettings();
+  const loadPinStatus = async () => {
+    try {
+      const p = await AsyncStorage.getItem('app_pin');
+      if (p === '123456') {
+        // Hapus hardcoded PIN jika pernah tersimpan
+        await AsyncStorage.removeItem('app_pin');
+        setHasPin(false);
+      } else {
+        setHasPin(Boolean(p && p.length === 6));
+      }
+    } catch {
+      setHasPin(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPinStatus();
   }, []);
 
-  const toggleSwitch = async () => {
-    if (!isPinActive) {
-      setIsSettingUp(true);
-      setStep(1);
-      setPin('');
-      setFirstPin('');
-    } else {
-      showConfirm({
-        title: 'Matikan PIN',
-        message: 'Apakah Anda yakin ingin mematikan fitur PIN Aplikasi?',
-        confirmText: 'Matikan',
-        cancelText: 'Batal',
-        type: 'danger',
-        onConfirm: async () => {
-          setIsPinActive(false);
-          await AsyncStorage.setItem('app_pin_active', 'false');
-          await AsyncStorage.removeItem('app_pin');
-        }
-      });
-    }
+  const startPinSetup = () => {
+    setIsSettingUp(true);
+    setStep(1);
+    setPin('');
+    setFirstPin('');
+  };
+
+  const handleDeletePin = () => {
+    showConfirm({
+      title: 'Hapus PIN',
+      message: 'Apakah Anda yakin ingin menghapus PIN keamanan Anda?',
+      confirmText: 'Hapus',
+      cancelText: 'Batal',
+      type: 'danger',
+      onConfirm: async () => {
+        await AsyncStorage.removeItem('app_pin');
+        setHasPin(false);
+        showToast({
+          title: 'PIN Dihapus',
+          message: 'PIN keamanan Anda telah dinonaktifkan.',
+          type: 'info'
+        });
+      }
+    });
   };
 
   const handleKeyPress = (num: string) => {
     if (pin.length < 6) {
       const newPin = pin + num;
       setPin(newPin);
-      
-      // Auto-transition ketika 6 digit terpenuhi
+
       if (newPin.length === 6) {
         setTimeout(() => {
           if (step === 1) {
@@ -63,22 +78,33 @@ export default function PinSetupScreen() {
             setStep(2);
           } else if (step === 2) {
             if (newPin === firstPin) {
-              Alert.alert('Sukses', 'PIN Keamanan berhasil diatur!', [
-                { text: 'Selesai', onPress: async () => {
-                  await AsyncStorage.setItem('app_pin', newPin);
-                  await AsyncStorage.setItem('app_pin_active', 'true');
-                  setIsSettingUp(false);
-                  setIsPinActive(true);
-                  setPin('');
-                }}
+              Alert.alert('Sukses', 'PIN Keamanan berhasil disimpan!', [
+                {
+                  text: 'Selesai',
+                  onPress: async () => {
+                    await AsyncStorage.setItem('app_pin', newPin);
+                    setHasPin(true);
+                    setIsSettingUp(false);
+                    setPin('');
+                    setFirstPin('');
+                    showToast({
+                      title: 'Berhasil',
+                      message: 'PIN baru Anda berhasil diaktifkan.',
+                      type: 'success'
+                    });
+                  }
+                }
               ]);
             } else {
-              Alert.alert('Gagal', 'PIN tidak cocok. Silakan ulangi dari awal.', [
-                { text: 'Ulangi', onPress: () => {
-                  setStep(1);
-                  setFirstPin('');
-                  setPin('');
-                }}
+              Alert.alert('Gagal', 'Konfirmasi PIN tidak cocok. Silakan ulangi.', [
+                {
+                  text: 'Ulangi',
+                  onPress: () => {
+                    setStep(1);
+                    setFirstPin('');
+                    setPin('');
+                  }
+                }
               ]);
             }
           }
@@ -92,68 +118,78 @@ export default function PinSetupScreen() {
   };
 
   return (
-    <View style={[styles.container, !isSettingUp && { backgroundColor: '#f4f4f5' }]}>
-      <Stack.Screen 
-        options={{ 
-          title: 'Atur PIN Keamanan',
+    <View style={styles.container}>
+      <Stack.Screen
+        options={{
+          title: 'PIN Keamanan',
           headerStyle: { backgroundColor: theme.colors.primary },
           headerTintColor: '#fff',
           headerLeft: () => (
-            <TouchableOpacity 
-              onPress={() => isSettingUp ? setIsSettingUp(false) : router.back()} 
+            <TouchableOpacity
+              onPress={() => (isSettingUp ? setIsSettingUp(false) : router.back())}
               style={{ marginLeft: 8, marginRight: 16 }}
             >
               <MaterialIcons name="arrow-back" size={24} color="#fff" />
             </TouchableOpacity>
           )
-        }} 
+        }}
       />
 
       {!isSettingUp ? (
-        // TAMPILAN PENGATURAN PIN (TOGGLE)
-        <View style={styles.settingsContent}>
-          <View style={[styles.iconCircle, isPinActive && styles.iconCircleActive]}>
-            <MaterialIcons name="dialpad" size={70} color={isPinActive ? '#fff' : '#10b981'} />
+        <ScrollView contentContainerStyle={styles.settingsContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.iconCircle}>
+            <MaterialIcons name="dialpad" size={64} color="#10b981" />
           </View>
-          
-          <Text style={styles.titleMain}>Keamanan PIN</Text>
+
+          <Text style={styles.titleMain}>PIN Keamanan</Text>
           <Text style={styles.subtitleMain}>
-            Gunakan 6 digit angka khusus untuk mengamankan data rahasia dan verifikasi persetujuan di aplikasi.
+            Gunakan 6 digit PIN pribadi buatan Anda sendiri untuk melindungi akses data rahasia seperti slip gaji.
           </Text>
 
-          <View style={styles.card}>
-            <View style={styles.cardInfo}>
-              <MaterialIcons name="security" size={24} color={theme.colors.primary} />
-              <View style={{ marginLeft: 16, flex: 1 }}>
-                <Text style={styles.cardTitle}>Gunakan PIN Aplikasi</Text>
-                <Text style={styles.cardDesc}>Lapisan keamanan tambahan</Text>
-              </View>
+          <View style={styles.statusCard}>
+            <View style={styles.statusHeader}>
+              <View style={[styles.statusDot, { backgroundColor: hasPin ? '#10b981' : '#f59e0b' }]} />
+              <Text style={styles.statusTitle}>
+                {hasPin ? 'PIN Keamanan Aktif' : 'PIN Belum Diatur'}
+              </Text>
             </View>
-            <Switch
-              trackColor={{ false: '#cbd5e1', true: '#10b981' }}
-              thumbColor={isPinActive ? '#fff' : '#f4f3f4'}
-              onValueChange={toggleSwitch}
-              value={isPinActive}
-            />
+            <Text style={styles.statusDesc}>
+              {hasPin
+                ? 'PIN 6 digit pribadi Anda tersimpan dengan aman pada perangkat ini.'
+                : 'Anda belum mengatur PIN keamanan. Silakan buat PIN untuk mengamankan data Anda.'}
+            </Text>
           </View>
 
-          {isPinActive && (
-            <View style={styles.successBox}>
-              <MaterialIcons name="check-circle" size={20} color={theme.colors.success} />
-              <Text style={styles.successText}>PIN Keamanan saat ini aktif. Anda dapat menggunakannya sebagai alternatif Sidik Jari.</Text>
-            </View>
+          <TouchableOpacity style={styles.btnPrimary} onPress={startPinSetup} activeOpacity={0.8}>
+            <MaterialIcons name={hasPin ? "edit" : "add-circle"} size={20} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={styles.btnPrimaryText}>
+              {hasPin ? 'Ubah PIN Keamanan' : 'Buat PIN Baru'}
+            </Text>
+          </TouchableOpacity>
+
+          {hasPin && (
+            <TouchableOpacity style={styles.btnDelete} onPress={handleDeletePin} activeOpacity={0.7}>
+              <MaterialIcons name="delete-outline" size={20} color="#ef4444" style={{ marginRight: 6 }} />
+              <Text style={styles.btnDeleteText}>Hapus PIN</Text>
+            </TouchableOpacity>
           )}
-        </View>
+
+          <View style={styles.infoBox}>
+            <MaterialIcons name="security" size={20} color={theme.colors.primary} />
+            <Text style={styles.infoText}>
+              Aplikasi tidak menggunakan PIN bawaan/default. Setiap karyawan membuat PIN pribadinya sendiri secara aman.
+            </Text>
+          </View>
+        </ScrollView>
       ) : (
-        // TAMPILAN KEYPAD PEMBUATAN PIN (2-STEP)
-        <View style={styles.keypadContent}>
-          <View style={styles.header}>
-            <MaterialIcons name={step === 1 ? "dialpad" : "check-circle"} size={60} color="#10b981" />
-            <Text style={styles.title}>{step === 1 ? 'Buat PIN Baru' : 'Konfirmasi PIN Baru'}</Text>
-            <Text style={styles.subtitle}>
-              {step === 1 
-                ? 'Gunakan 6 digit angka yang mudah Anda ingat.' 
-                : 'Masukkan kembali 6 digit angka PIN Anda untuk konfirmasi.'}
+        <ScrollView contentContainerStyle={styles.keypadContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.headerKeypad}>
+            <MaterialIcons name={step === 1 ? 'dialpad' : 'check-circle'} size={50} color="#10b981" />
+            <Text style={styles.keypadTitle}>{step === 1 ? 'Masukkan 6 Digit PIN Baru' : 'Konfirmasi PIN Baru'}</Text>
+            <Text style={styles.keypadSubtitle}>
+              {step === 1
+                ? 'Pilih 6 digit angka yang mudah Anda ingat.'
+                : 'Ketik ulang 6 digit angka PIN Anda untuk konfirmasi.'}
             </Text>
           </View>
 
@@ -165,54 +201,138 @@ export default function PinSetupScreen() {
 
           <View style={styles.keypad}>
             {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(num => (
-              <TouchableOpacity key={num} style={styles.keyBtn} onPress={() => handleKeyPress(num)}>
+              <TouchableOpacity key={num} style={styles.keyBtn} onPress={() => handleKeyPress(num)} activeOpacity={0.7}>
                 <Text style={styles.keyText}>{num}</Text>
               </TouchableOpacity>
             ))}
-            <View style={styles.keyBtn} />
-            <TouchableOpacity style={styles.keyBtn} onPress={() => handleKeyPress('0')}>
+            <View style={styles.keyBtnEmpty} />
+            <TouchableOpacity style={styles.keyBtn} onPress={() => handleKeyPress('0')} activeOpacity={0.7}>
               <Text style={styles.keyText}>0</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.keyBtn} onPress={handleBackspace}>
-              <MaterialIcons name="backspace" size={28} color={theme.colors.text} />
+            <TouchableOpacity style={styles.keyBtn} onPress={handleBackspace} activeOpacity={0.7}>
+              <MaterialIcons name="backspace" size={26} color={theme.colors.textMuted} />
             </TouchableOpacity>
           </View>
-        </View>
-      )}
 
+          <TouchableOpacity
+            style={styles.btnCancelSetup}
+            onPress={() => {
+              setIsSettingUp(false);
+              setPin('');
+              setFirstPin('');
+            }}
+          >
+            <Text style={styles.btnCancelSetupText}>Batal</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  
-  // Pengaturan UI
-  settingsContent: { padding: theme.spacing.xl, alignItems: 'center' },
-  iconCircle: { width: 140, height: 140, borderRadius: 70, backgroundColor: '#dcfce7', alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.xl },
-  iconCircleActive: { backgroundColor: '#10b981', elevation: 10, shadowColor: '#10b981', shadowOpacity: 0.5, shadowRadius: 15 },
-  titleMain: { fontSize: 24, fontWeight: 'bold', color: theme.colors.text, marginBottom: 12 },
-  subtitleMain: { fontSize: 15, color: theme.colors.textMuted, textAlign: 'center', marginBottom: 40, lineHeight: 22 },
-  
-  card: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: theme.radius.l, padding: theme.spacing.l, alignItems: 'center', justifyContent: 'space-between', elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, width: '100%' },
-  cardInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  cardTitle: { fontSize: 16, fontWeight: 'bold', color: theme.colors.text },
-  cardDesc: { fontSize: 13, color: theme.colors.textMuted, marginTop: 4 },
-  
-  successBox: { flexDirection: 'row', backgroundColor: '#dcfce7', padding: 16, borderRadius: theme.radius.m, marginTop: 24, alignItems: 'center', width: '100%' },
-  successText: { color: '#166534', marginLeft: 12, flex: 1, fontSize: 13, fontWeight: '500' },
+  container: { flex: 1, backgroundColor: '#f4f4f5' },
+  settingsContent: { padding: 24, alignItems: 'center' },
+  iconCircle: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: '#dcfce7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 20
+  },
+  titleMain: { fontSize: 22, fontWeight: 'bold', color: theme.colors.text, marginBottom: 8, textAlign: 'center' },
+  subtitleMain: { fontSize: 14, color: theme.colors.textMuted, textAlign: 'center', marginBottom: 28, lineHeight: 20 },
 
-  // Keypad UI
-  keypadContent: { alignItems: 'center', paddingTop: theme.spacing.xl },
-  header: { alignItems: 'center', marginVertical: theme.spacing.xl },
-  title: { fontSize: 24, fontWeight: 'bold', color: theme.colors.text, marginTop: 16, marginBottom: 8 },
-  subtitle: { fontSize: 14, color: theme.colors.textMuted, textAlign: 'center', paddingHorizontal: 40 },
-  
-  dotsContainer: { flexDirection: 'row', marginVertical: theme.spacing.xxl, gap: 15 },
-  dot: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#cbd5e1', backgroundColor: '#f1f5f9' },
+  statusCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 18,
+    width: '100%',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    marginBottom: 20
+  },
+  statusHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
+  statusTitle: { fontSize: 16, fontWeight: '700', color: theme.colors.text },
+  statusDesc: { fontSize: 13, color: theme.colors.textMuted, lineHeight: 18 },
+
+  btnPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    width: '100%',
+    elevation: 3,
+    marginBottom: 12
+  },
+  btnPrimaryText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+
+  btnDelete: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+    backgroundColor: '#fef2f2',
+    marginBottom: 16
+  },
+  btnDeleteText: { color: '#ef4444', fontSize: 14, fontWeight: '600' },
+
+  infoBox: {
+    flexDirection: 'row',
+    backgroundColor: '#eff6ff',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 8,
+    alignItems: 'flex-start',
+    width: '100%'
+  },
+  infoText: {
+    color: '#1e40af',
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginLeft: 10,
+    flex: 1
+  },
+
+  keypadContent: { alignItems: 'center', paddingVertical: 24 },
+  headerKeypad: { alignItems: 'center', marginBottom: 16, paddingHorizontal: 24 },
+  keypadTitle: { fontSize: 20, fontWeight: 'bold', color: theme.colors.text, marginTop: 12, marginBottom: 6 },
+  keypadSubtitle: { fontSize: 13, color: theme.colors.textMuted, textAlign: 'center', lineHeight: 18 },
+
+  dotsContainer: { flexDirection: 'row', marginVertical: 20, gap: 14 },
+  dot: { width: 15, height: 15, borderRadius: 7.5, borderWidth: 1.5, borderColor: '#cbd5e1', backgroundColor: '#e2e8f0' },
   dotFilled: { backgroundColor: '#10b981', borderColor: '#10b981' },
-  
-  keypad: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', width: 280, marginTop: 20 },
-  keyBtn: { width: 80, height: 80, justifyContent: 'center', alignItems: 'center', borderRadius: 40, margin: 6, backgroundColor: '#f8fafc' },
-  keyText: { fontSize: 28, fontWeight: '600', color: theme.colors.text },
+
+  keypad: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', width: 280 },
+  keyBtn: {
+    width: 72,
+    height: 72,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 36,
+    margin: 8,
+    backgroundColor: '#fff',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4
+  },
+  keyBtnEmpty: { width: 72, height: 72, margin: 8 },
+  keyText: { fontSize: 26, fontWeight: '600', color: theme.colors.text },
+
+  btnCancelSetup: { marginTop: 24, paddingVertical: 10, paddingHorizontal: 24 },
+  btnCancelSetupText: { color: theme.colors.textMuted, fontSize: 14, fontWeight: '600' }
 });

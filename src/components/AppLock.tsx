@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, AppState, AppStateStatus, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, AppState, TouchableOpacity, Alert } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { MaterialIcons } from '@expo/vector-icons';
 import { theme } from '../core/theme';
@@ -23,26 +23,40 @@ export const resumeAppLock = (delayMs = 3000) => {
   }, delayMs);
 };
 
+export const getIsAppLockSuspended = () => isAppLockSuspended;
+
 export function AppLock({ children }: { children: React.ReactNode }) {
   const [isLocked, setIsLocked] = useState(false);
   const [hasBiometrics, setHasBiometrics] = useState(false);
-  const [savedPin, setSavedPin] = useState('123456');
+  const [savedPin, setSavedPin] = useState<string | null>(null);
   const [pin, setPin] = useState('');
   const appState = useRef(AppState.currentState);
   const backgroundTime = useRef<number | null>(null);
-  
+
   // Waktu jeda (dalam milidetik) sebelum aplikasi terkunci saat di background (default 60 detik)
-  const LOCK_TIMEOUT = 60000; 
+  const LOCK_TIMEOUT = 60000;
 
   const checkBiometrics = async () => {
-    const hasHardware = await LocalAuthentication.hasHardwareAsync();
-    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-    setHasBiometrics(hasHardware && isEnrolled);
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      setHasBiometrics(Boolean(hasHardware && isEnrolled));
+    } catch {
+      setHasBiometrics(false);
+    }
   };
 
   const loadSavedPin = async () => {
-    const p = await AsyncStorage.getItem('app_pin');
-    if (p) setSavedPin(p);
+    try {
+      const p = await AsyncStorage.getItem('app_pin');
+      if (p && p !== '123456') {
+        setSavedPin(p);
+      } else {
+        setSavedPin(null);
+      }
+    } catch {
+      setSavedPin(null);
+    }
   };
 
   useEffect(() => {
@@ -67,18 +81,13 @@ export function AppLock({ children }: { children: React.ReactNode }) {
         if (backgroundTime.current) {
           const timeAway = Date.now() - backgroundTime.current;
           if (timeAway > LOCK_TIMEOUT) {
-            // Hanya kunci jika pengguna telah mengaktifkan PIN atau Sidik Jari di menu Pengaturan
-            AsyncStorage.multiGet(['app_pin_active', 'biometrics_enabled']).then(([pinItem, bioItem]) => {
-              const isPinActive = pinItem[1] === 'true';
-              const isBioActive = bioItem[1] === 'true';
-              if (isPinActive || isBioActive) {
+            // Hanya kunci jika pengguna telah mengaktifkan Sidik Jari di menu Pengaturan
+            AsyncStorage.getItem('biometrics_enabled').then(bioEnabled => {
+              if (bioEnabled === 'true') {
                 setIsLocked(true);
-                // Jika biometrik aktif, langsung tawarkan scan sidik jari secara otomatis
-                if (isBioActive) {
-                  setTimeout(() => {
-                    authenticate();
-                  }, 400);
-                }
+                setTimeout(() => {
+                  authenticate();
+                }, 400);
               }
             }).catch(() => {});
           }
@@ -97,14 +106,14 @@ export function AppLock({ children }: { children: React.ReactNode }) {
     if (!hasBiometrics) return;
     try {
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Pindai Sidik Jari untuk Buka Kunci',
-        cancelLabel: 'Batal',
+        promptMessage: 'Pindai Sidik Jari untuk Buka Aplikasi',
+        cancelLabel: 'Gunakan PIN',
         disableDeviceFallback: false,
       });
 
       if (result.success) {
         setIsLocked(false);
-        setPin(''); // Reset PIN input
+        setPin('');
       }
     } catch (error) {
       console.log('Autentikasi Error', error);
@@ -115,14 +124,15 @@ export function AppLock({ children }: { children: React.ReactNode }) {
     if (pin.length < 6) {
       const newPin = pin + num;
       setPin(newPin);
-      
-      // Simulasi verifikasi PIN Aplikasi
+
       if (newPin.length === 6) {
-        if (newPin === savedPin) { 
+        if (savedPin && newPin === savedPin) {
           setIsLocked(false);
           setPin('');
         } else {
-          Alert.alert('PIN Salah', 'Silakan coba lagi.', [{ text: 'OK', onPress: () => setPin('') }]);
+          Alert.alert('PIN Salah', 'PIN yang Anda masukkan tidak cocok.', [
+            { text: 'OK', onPress: () => setPin('') }
+          ]);
         }
       }
     }
@@ -136,13 +146,17 @@ export function AppLock({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  // Tampilan M-Banking Style Lock Screen
+  // Tampilan M-Banking Style Lock Screen (Murni dinamis tanpa hardcode)
   return (
     <View style={styles.lockScreen}>
       <View style={styles.header}>
         <MaterialIcons name="security" size={50} color="#fff" />
-        <Text style={styles.title}>Masukkan PIN Aplikasi</Text>
-        <Text style={styles.subtitle}>Untuk keamanan, masukkan 6 digit PIN Anda (Ketik: 123456 untuk demo)</Text>
+        <Text style={styles.title}>Kunci Aplikasi E-Karyawan</Text>
+        <Text style={styles.subtitle}>
+          {hasBiometrics
+            ? 'Pindai sidik jari atau masukkan 6 digit PIN Anda.'
+            : 'Masukkan 6 digit PIN keamanan Anda.'}
+        </Text>
       </View>
 
       <View style={styles.dotsContainer}>
@@ -183,17 +197,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: theme.spacing.xl,
     position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     zIndex: 99999,
   },
   header: { alignItems: 'center', marginBottom: 40 },
   title: { fontSize: 22, fontWeight: 'bold', color: '#fff', marginTop: 12, marginBottom: 8 },
-  subtitle: { fontSize: 14, color: 'rgba(255,255,255,0.7)', textAlign: 'center', paddingHorizontal: 20 },
-  
+  subtitle: { fontSize: 14, color: 'rgba(255,255,255,0.75)', textAlign: 'center', paddingHorizontal: 20 },
+
   dotsContainer: { flexDirection: 'row', gap: 15, marginBottom: 50 },
   dot: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.4)', backgroundColor: 'transparent' },
   dotFilled: { backgroundColor: '#fff', borderColor: '#fff' },
-  
+
   keypad: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', width: 280 },
   keyBtn: { width: 80, height: 80, justifyContent: 'center', alignItems: 'center', borderRadius: 40, margin: 6, backgroundColor: 'rgba(255,255,255,0.1)' },
   keyText: { fontSize: 28, fontWeight: '600', color: '#fff' },

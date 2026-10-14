@@ -41,7 +41,7 @@ export default function ProfileLayout() {
       <Stack.Screen
         name="pin-setup"
         options={{
-          title: 'Atur PIN Keamanan',
+          title: 'PIN Keamanan',
         }}
       />
       <Stack.Screen

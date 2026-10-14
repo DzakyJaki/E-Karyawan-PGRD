@@ -192,7 +192,6 @@ export function ProfileScreen() {
     {
       title: 'Administrasi',
       items: [
-        { icon: 'payments', label: 'Slip Gaji Bulanan', color: theme.colors.success, route: '/profile/salary' },
         { icon: 'assignment-ind', label: 'Data Karyawan', color: theme.colors.primary, route: '/profile/employee-data' },
       ]
     },
@@ -200,8 +199,8 @@ export function ProfileScreen() {
       title: 'Pengaturan Akun & Keamanan',
       items: [
         { icon: 'lock', label: 'Ubah Password', color: '#f59e0b', route: '/profile/change-password' },
-        { icon: 'dialpad', label: 'Atur PIN Keamanan', color: '#10b981', route: '/profile/pin-setup' },
-        { icon: 'fingerprint', label: 'Sidik Jari (Biometrik)', color: '#ec4899', route: '/profile/biometrics' },
+        { icon: 'dialpad', label: 'PIN Keamanan', color: '#10b981', route: '/profile/pin-setup' },
+        { icon: 'fingerprint', label: 'Kunci Sidik Jari (Biometrik)', color: '#ec4899', route: '/profile/biometrics' },
         { icon: 'chat', label: 'Tutorial Penggunaan', color: '#8b5cf6', route: '/profile/chat-support' },
       ]
     }

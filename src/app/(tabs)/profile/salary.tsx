@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Modal, TextInput } from 'react-native';
 import { theme } from '../../../core/theme';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -58,7 +58,10 @@ export default function SalaryScreen() {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [pin, setPin] = useState('');
   const [hasBiometrics, setHasBiometrics] = useState(false);
-  const [savedPin, setSavedPin] = useState('123456');
+  const [savedPin, setSavedPin] = useState<string | null>(null);
+  const [isPinConfigured, setIsPinConfigured] = useState<boolean | null>(null);
+  const [setupStep, setSetupStep] = useState<1 | 2>(1);
+  const [tempPin, setTempPin] = useState('');
 
   // API Data States
   const [slipList, setSlipList] = useState<SlipGajiSummary[]>([]);
@@ -73,36 +76,88 @@ export default function SalaryScreen() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedYearFilter, setSelectedYearFilter] = useState<'all' | number>('all');
 
-  useEffect(() => {
-    checkBiometrics();
-    loadSavedPin();
-  }, []);
-
   const loadSavedPin = async () => {
-    const p = await AsyncStorage.getItem('app_pin');
-    if (p) setSavedPin(p);
-  };
-
-  useEffect(() => {
-    if (!isUnlocked) {
-      const timer = setTimeout(() => {
-        authenticate();
-      }, 500);
-      return () => clearTimeout(timer);
+    try {
+      const p = await AsyncStorage.getItem('app_pin');
+      if (p === '123456') {
+        // Hapus PIN hardcoded lama jika tersimpan dari pengujian
+        await AsyncStorage.removeItem('app_pin');
+        setSavedPin(null);
+        setIsPinConfigured(false);
+      } else if (p && p.length === 6) {
+        setSavedPin(p);
+        setIsPinConfigured(true);
+      } else {
+        setSavedPin(null);
+        setIsPinConfigured(false);
+      }
+    } catch {
+      setSavedPin(null);
+      setIsPinConfigured(false);
     }
-  }, [isUnlocked, hasBiometrics]);
-
-  const checkBiometrics = async () => {
-    const hasHardware = await LocalAuthentication.hasHardwareAsync();
-    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-    setHasBiometrics(hasHardware && isEnrolled);
   };
+
+  // Kunci otomatis setiap kali pengguna beralih tab atau meninggalkan layar Slip Gaji
+  useFocusEffect(
+    useCallback(() => {
+      let isFocused = true;
+      let timer: any = null;
+
+      loadSavedPin();
+
+      // Periksa biometrik dan buka pemindaian sidik jari HANYA jika tab Slip Gaji sedang aktif/fokus
+      const initAuth = async () => {
+        try {
+          const hasHardware = await LocalAuthentication.hasHardwareAsync();
+          const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+          const canBio = Boolean(hasHardware && isEnrolled);
+          if (!isFocused) return;
+          setHasBiometrics(canBio);
+
+          // Panggil sidik jari otomatis HANYA jika pengguna sedang fokus di layar Slip Gaji dan belum terbuka
+          if (canBio && !isUnlocked) {
+            timer = setTimeout(async () => {
+              if (!isFocused) return;
+              try {
+                const result = await LocalAuthentication.authenticateAsync({
+                  promptMessage: 'Pindai Sidik Jari untuk Buka Slip Gaji',
+                  cancelLabel: 'Gunakan PIN',
+                  disableDeviceFallback: true,
+                });
+                if (result.success && isFocused) {
+                  setIsUnlocked(true);
+                }
+              } catch (error) {
+                console.log('Autentikasi Biometrik Batal/Error', error);
+              }
+            }, 350);
+          }
+        } catch {
+          if (isFocused) setHasBiometrics(false);
+        }
+      };
+
+      initAuth();
+
+      return () => {
+        isFocused = false;
+        if (timer) clearTimeout(timer);
+        // Otomatis kunci kembali saat berpindah tab
+        setIsUnlocked(false);
+        setPin('');
+        setTempPin('');
+        setSetupStep(1);
+      };
+    }, [])
+  );
 
   const authenticate = async () => {
-    if (!hasBiometrics) return;
     try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      if (!hasHardware || !isEnrolled) return;
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Buka Slip Gaji',
+        promptMessage: 'Pindai Sidik Jari untuk Buka Slip Gaji',
         cancelLabel: 'Gunakan PIN',
         disableDeviceFallback: true,
       });
@@ -111,25 +166,68 @@ export default function SalaryScreen() {
         setIsUnlocked(true);
       }
     } catch (error) {
-      console.log('Autentikasi Error', error);
+      console.log('Autentikasi Biometrik Batal/Error', error);
     }
   };
 
-  const handleKeyPress = (num: string) => {
+  const handleKeyPress = async (num: string) => {
     if (pin.length < 6) {
       const newPin = pin + num;
       setPin(newPin);
       
       if (newPin.length === 6) {
-        if (newPin === savedPin) { 
-          setIsUnlocked(true);
+        // Ambil data PIN tersimpan secara langsung untuk menghindari delay state
+        const storedPin = await AsyncStorage.getItem('app_pin');
+        const activePin = (savedPin && savedPin.length === 6 && savedPin !== '123456')
+          ? savedPin
+          : (storedPin && storedPin.length === 6 && storedPin !== '123456' ? storedPin : null);
+
+        // Jika belum ada PIN sama sekali, jalankan mode pembuatan PIN
+        if (!activePin) {
+          setTimeout(async () => {
+            if (setupStep === 1) {
+              setTempPin(newPin);
+              setPin('');
+              setSetupStep(2);
+            } else if (setupStep === 2) {
+              if (newPin === tempPin) {
+                await AsyncStorage.setItem('app_pin', newPin);
+                setSavedPin(newPin);
+                setIsPinConfigured(true);
+                setIsUnlocked(true);
+                setPin('');
+                setTempPin('');
+                setSetupStep(1);
+                showToast({
+                  title: 'PIN Dibuat',
+                  message: 'PIN Slip Gaji Anda berhasil disimpan dan diaktifkan.',
+                  type: 'success'
+                });
+              } else {
+                showToast({
+                  title: 'PIN Tidak Cocok',
+                  message: 'Konfirmasi PIN berbeda. Silakan masukkan dari awal.',
+                  type: 'error'
+                });
+                setPin('');
+                setTempPin('');
+                setSetupStep(1);
+              }
+            }
+          }, 300);
         } else {
-          showToast({
-            title: 'PIN Salah',
-            message: 'PIN yang Anda masukkan salah. Silakan coba lagi.',
-            type: 'error'
-          });
-          setPin('');
+          // Validasi kecocokan PIN pengguna
+          if (newPin === activePin) { 
+            setIsUnlocked(true);
+            setPin('');
+          } else {
+            showToast({
+              title: 'PIN Salah',
+              message: 'PIN yang Anda masukkan salah. Silakan coba lagi.',
+              type: 'error'
+            });
+            setPin('');
+          }
         }
       }
     }
@@ -490,20 +588,34 @@ export default function SalaryScreen() {
           title: isUnlocked ? 'Slip Gaji' : 'Keamanan',
           headerStyle: { backgroundColor: theme.colors.primary },
           headerTintColor: '#fff',
-          headerLeft: () => (
+          headerLeft: () => router.canGoBack() ? (
             <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 8, marginRight: 16 }}>
               <MaterialIcons name="arrow-back" size={24} color="#fff" />
             </TouchableOpacity>
-          )
+          ) : null
         }} 
       />
 
       {!isUnlocked ? (
-        <View style={styles.lockScreen}>
+        <ScrollView 
+          contentContainerStyle={styles.lockScrollContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
           <View style={styles.headerLock}>
-            <MaterialIcons name="lock-outline" size={50} color={theme.colors.primary} />
-            <Text style={styles.titleLock}>Masukkan PIN</Text>
-            <Text style={styles.subtitleLock}>Data gaji dilindungi (Ketik: 123456)</Text>
+            <View style={styles.lockIconCircle}>
+              <MaterialIcons name={!isPinConfigured ? "security" : "lock"} size={36} color={theme.colors.primary} />
+            </View>
+            <Text style={styles.titleLock}>
+              {!isPinConfigured 
+                ? (setupStep === 1 ? 'Buat PIN Slip Gaji' : 'Konfirmasi PIN Baru')
+                : 'Masukkan PIN Keamanan'}
+            </Text>
+            <Text style={styles.subtitleLock}>
+              {!isPinConfigured
+                ? (setupStep === 1 ? 'Buat 6 digit PIN untuk mengamankan data slip gaji Anda.' : 'Ketik ulang 6 digit PIN untuk konfirmasi.')
+                : (hasBiometrics ? 'Pindai sidik jari atau masukkan 6 digit PIN Anda.' : 'Masukkan 6 digit PIN untuk membuka slip gaji.')}
+            </Text>
           </View>
 
           <View style={styles.dotsContainer}>
@@ -514,25 +626,41 @@ export default function SalaryScreen() {
 
           <View style={styles.keypad}>
             {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(num => (
-              <TouchableOpacity key={num} style={styles.keyBtn} onPress={() => handleKeyPress(num)}>
+              <TouchableOpacity key={num} style={styles.keyBtn} onPress={() => handleKeyPress(num)} activeOpacity={0.7}>
                 <Text style={styles.keyText}>{num}</Text>
               </TouchableOpacity>
             ))}
             {hasBiometrics ? (
-              <TouchableOpacity style={styles.keyBtnAction} onPress={authenticate}>
-                <MaterialIcons name="fingerprint" size={32} color={theme.colors.primary} />
+              <TouchableOpacity style={styles.keyBtnAction} onPress={authenticate} activeOpacity={0.7}>
+                <MaterialIcons name="fingerprint" size={36} color={theme.colors.primary} />
               </TouchableOpacity>
             ) : (
               <View style={styles.keyBtnAction} />
             )}
-            <TouchableOpacity style={styles.keyBtn} onPress={() => handleKeyPress('0')}>
+            <TouchableOpacity style={styles.keyBtn} onPress={() => handleKeyPress('0')} activeOpacity={0.7}>
               <Text style={styles.keyText}>0</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.keyBtnAction} onPress={handleBackspace}>
-              <MaterialIcons name="backspace" size={28} color={theme.colors.textMuted} />
+            <TouchableOpacity style={styles.keyBtnAction} onPress={handleBackspace} activeOpacity={0.7}>
+              <MaterialIcons name="backspace" size={26} color={theme.colors.textMuted} />
             </TouchableOpacity>
           </View>
-        </View>
+
+          <TouchableOpacity 
+            style={styles.btnResetPinHint}
+            onPress={() => {
+              Alert.alert(
+                'Bantuan Keamanan Slip Gaji',
+                hasBiometrics
+                  ? 'Anda dapat membuka slip gaji menggunakan sidik jari atau PIN. Anda juga dapat mengubah PIN melalui menu Profil > PIN Keamanan.'
+                  : 'Anda dapat mengatur atau memperbarui PIN melalui menu Profil > PIN Keamanan.',
+                [{ text: 'Mengerti' }]
+              );
+            }}
+          >
+            <MaterialIcons name="help-outline" size={16} color={theme.colors.primary} style={{ marginRight: 4 }} />
+            <Text style={styles.btnResetPinText}>Bantuan PIN & Sidik Jari</Text>
+          </TouchableOpacity>
+        </ScrollView>
       ) : (
       <ScrollView 
         showsVerticalScrollIndicator={false}
@@ -1000,18 +1128,38 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 18, fontWeight: 'bold', color: theme.colors.text, marginTop: 16 },
   emptySubtitle: { fontSize: 14, color: theme.colors.textMuted, textAlign: 'center', marginTop: 8, paddingHorizontal: 20 },
   
-  // Lock Screen Styles
-  lockScreen: { flex: 1, backgroundColor: '#f8fafc', justifyContent: 'center', alignItems: 'center', padding: theme.spacing.xl },
-  headerLock: { alignItems: 'center', marginBottom: 40 },
-  titleLock: { fontSize: 22, fontWeight: 'bold', color: theme.colors.text, marginTop: 12, marginBottom: 8 },
-  subtitleLock: { fontSize: 14, color: theme.colors.textMuted, textAlign: 'center', paddingHorizontal: 20 },
+  // Security & Lock Screen Styles
+  lockScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 28,
+    paddingHorizontal: theme.spacing.l,
+    backgroundColor: '#f8fafc',
+  },
+  headerLock: { alignItems: 'center', marginBottom: 20 },
+  lockIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#eff6ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: '#dbeafe',
+  },
+  titleLock: { fontSize: 20, fontWeight: 'bold', color: theme.colors.text, marginBottom: 6 },
+  subtitleLock: { fontSize: 13, color: theme.colors.textMuted, textAlign: 'center', paddingHorizontal: 16 },
   
-  dotsContainer: { flexDirection: 'row', gap: 15, marginBottom: 50 },
-  dot: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: theme.colors.border, backgroundColor: 'transparent' },
+  dotsContainer: { flexDirection: 'row', gap: 14, marginBottom: 28 },
+  dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.5, borderColor: theme.colors.border, backgroundColor: 'transparent' },
   dotFilled: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
   
-  keypad: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', width: 280 },
-  keyBtn: { width: 80, height: 80, justifyContent: 'center', alignItems: 'center', borderRadius: 40, margin: 6, backgroundColor: '#fff', elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
-  keyText: { fontSize: 28, fontWeight: '600', color: theme.colors.text },
-  keyBtnAction: { width: 80, height: 80, justifyContent: 'center', alignItems: 'center', margin: 6 },
+  keypad: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', width: 270 },
+  keyBtn: { width: 72, height: 72, justifyContent: 'center', alignItems: 'center', borderRadius: 36, margin: 5, backgroundColor: '#fff', elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4 },
+  keyText: { fontSize: 26, fontWeight: '600', color: theme.colors.text },
+  keyBtnAction: { width: 72, height: 72, justifyContent: 'center', alignItems: 'center', margin: 5 },
+  btnResetPinHint: { flexDirection: 'row', alignItems: 'center', marginTop: 24, padding: 8 },
+  btnResetPinText: { fontSize: 13, color: theme.colors.primary, fontWeight: '600' },
 });

@@ -43,6 +43,7 @@ const TUTORIAL_TOPICS: TutorialTopic[] = [
     routeLabel: 'Buka Halaman Presensi',
     guideText: `📍 PANDUAN PRESENSI GPS:\n\n1️⃣ Aktifkan GPS pada smartphone Anda dan izinkan akses lokasi.\n2️⃣ Masuk ke menu "Presensi" dari tombol tengah navigasi.\n3️⃣ Aplikasi akan memeriksa koordinat posisi Anda terhadap radius kantor cabang.\n4️⃣ Tekan "Clock In (Masuk)" saat mulai bertugas, atau "Clock Out (Pulang)" saat selesai jam kerja.\n5️⃣ Data jam masuk, jam pulang, dan status keterlambatan tersinkronisasi otomatis ke sistem HRD.`
   },
+  /* Lembur disembunyikan sementara sesuai instruksi owner, kodingan tetap disimpan:
   {
     id: 'lembur',
     icon: 'schedule',
@@ -52,14 +53,15 @@ const TUTORIAL_TOPICS: TutorialTopic[] = [
     routeLabel: 'Buka Halaman Lembur',
     guideText: `⏱️ PANDUAN PENGAJUAN LEMBUR:\n\n1️⃣ Buka menu "Lembur" dari tab navigasi bawah.\n2️⃣ Klik tombol "+ Ajukan Lembur Baru".\n3️⃣ Pilih tanggal pelaksanaan lembur serta jam mulai dan jam selesai.\n4️⃣ Total jam kerja lembur akan dihitung secara otomatis oleh sistem.\n5️⃣ Tuliskan rincian tugas atau pekerjaan yang Anda selesaikan.\n6️⃣ Klik "Simpan Pengajuan" untuk diteruskan ke pimpinan untuk persetujuan.`
   },
+  */
   {
     id: 'gaji',
     icon: 'payments',
     title: 'Slip Gaji Bulanan',
     shortDesc: 'Akses rincian gaji, PIN & cetak PDF',
-    route: '/(tabs)/profile/salary',
+    route: '/(tabs)/salary',
     routeLabel: 'Buka Halaman Slip Gaji',
-    guideText: `💵 PANDUAN SLIP GAJI BULANAN:\n\n1️⃣ Masuk ke tab "Profil", lalu pilih "Slip Gaji Bulanan".\n2️⃣ Masukkan 6 digit PIN Keamanan Anda untuk otentikasi data finansial.\n3️⃣ Pilih periode bulan & tahun yang ingin dilihat.\n4️⃣ Anda dapat melihat rincian gaji pokok, tunjangan, dan potongan resmi.\n5️⃣ Tekan tombol "Cetak PDF" jika Anda membutuhkan dokumen cetak slip gaji.`
+    guideText: `💵 PANDUAN SLIP GAJI BULANAN:\n\n1️⃣ Masuk ke tab "Slip Gaji" pada menu navigasi bawah.\n2️⃣ Masukkan 6 digit PIN Keamanan Anda untuk otentikasi data finansial.\n3️⃣ Pilih periode bulan & tahun yang ingin dilihat.\n4️⃣ Anda dapat melihat rincian gaji pokok, tunjangan, dan potongan resmi.\n5️⃣ Tekan tombol "Cetak PDF" jika Anda membutuhkan dokumen cetak slip gaji.`
   },
   {
     id: 'profil',

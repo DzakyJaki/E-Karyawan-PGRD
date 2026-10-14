@@ -367,13 +367,17 @@ export function HomeScreen() {
           <Text style={styles.statLabel}>Sisa Cuti</Text>
         </View>
 
-        <View style={styles.statCard}>
+        <TouchableOpacity 
+          style={styles.statCard}
+          onPress={() => router.push('/(tabs)/salary')}
+          activeOpacity={0.8}
+        >
           <View style={[styles.statIconWrap, { backgroundColor: '#fef3c7' }]}>
-            <MaterialIcons name="more-time" size={20} color="#b45309" />
+            <MaterialIcons name="payments" size={20} color="#b45309" />
           </View>
-          <Text style={styles.statValue}>{totalOvertimeHours.toFixed(1)} Jam</Text>
-          <Text style={styles.statLabel}>Lembur Disetujui</Text>
-        </View>
+          <Text style={styles.statValue}>Bulan Ini</Text>
+          <Text style={styles.statLabel}>Slip Gaji</Text>
+        </TouchableOpacity>
       </View>
 
       {/* QUICK MENU GRID */}
@@ -381,8 +385,10 @@ export function HomeScreen() {
         <Text style={styles.sectionTitle}>Menu Cepat</Text>
         <View style={styles.menuGrid}>
           <MenuButton icon="calendar-month" color={theme.colors.primaryLight} label="Pengajuan Cuti" route="/(tabs)/leave" router={router} />
-          <MenuButton icon="schedule" color={theme.colors.warning} label="Form Lembur" route="/(tabs)/overtime" router={router} />
-          <MenuButton icon="payments" color={theme.colors.success} label="Slip Gaji" route="/(tabs)/profile/salary" router={router} />
+          {/* Menu Lembur disembunyikan sementara sesuai instruksi owner, kodingan tetap disimpan: */}
+          {/* <MenuButton icon="schedule" color={theme.colors.warning} label="Form Lembur" route="/(tabs)/overtime" router={router} /> */}
+          <MenuButton icon="assignment-ind" color={theme.colors.warning} label="Data Karyawan" route="/profile/employee-data" router={router} />
+          <MenuButton icon="payments" color={theme.colors.success} label="Slip Gaji" route="/(tabs)/salary" router={router} />
           <MenuButton icon="history" color={theme.colors.secondary} label="Riwayat Absen" route="/(tabs)/attendance" router={router} />
         </View>
       </View>
