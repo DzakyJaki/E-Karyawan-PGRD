@@ -27,6 +27,8 @@ interface TodayAttendance {
   date?: string;
   clock_in?: string | null;
   clock_out?: string | null;
+  break_start?: string | null;
+  break_end?: string | null;
   status?: string;
   is_late?: boolean | null;
   late_minutes?: number | null;
@@ -227,6 +229,9 @@ export function HomeScreen() {
     if (!isBranchLocationConfigured) {
       return { bg: '#fee2e2', text: '#991b1b', label: 'Lokasi Belum Diatur' };
     }
+    if (todayAttendance?.break_start && !todayAttendance?.break_end) {
+      return { bg: '#fef3c7', text: '#92400e', label: `Sedang Istirahat (${todayAttendance.break_start.substring(0, 5)})` };
+    }
     if (todayAttendance?.is_late && !todayAttendance?.clock_out) {
       const lateTxt = todayAttendance.late_minutes ? `Telat ${todayAttendance.late_minutes}m` : 'Terlambat';
       return { bg: '#fee2e2', text: '#991b1b', label: lateTxt };
@@ -253,6 +258,12 @@ export function HomeScreen() {
   const todayScheduleText = isWorkClosedToday
     ? `${todayDayName} • Libur / Tutup`
     : `${todayDayName} • ${workStartTime} - ${workEndTime} WIB`;
+
+  const breakStartTime = workTimeData?.break_start_time ? workTimeData.break_start_time.substring(0, 5) : '00:00';
+  const breakEndTime = workTimeData?.break_end_time ? workTimeData.break_end_time.substring(0, 5) : '13:15';
+  const todayBreakScheduleText = isWorkClosedToday
+    ? 'Libur (Tidak ada jam istirahat)'
+    : `${breakStartTime} - ${breakEndTime} WIB`;
 
   return (
     <View style={styles.rootWrapper}>
@@ -300,34 +311,102 @@ export function HomeScreen() {
 
         <Text style={styles.currentDate}>{todayFormatted}</Text>
         
-        <View style={styles.attendanceRow}>
-          <View style={styles.attendanceBox}>
-            <MaterialIcons 
-              name="login" 
-              size={24} 
-              color={todayAttendance?.clock_in ? (todayAttendance.is_late ? '#b91c1c' : theme.colors.success) : theme.colors.textMuted} 
-            />
-            <Text style={[styles.timeText, todayAttendance?.clock_in && { color: todayAttendance.is_late ? '#b91c1c' : theme.colors.success }]}>
-              {checkInTime}
-            </Text>
-            <Text style={[styles.statusLabel, todayAttendance?.is_late && { color: '#b91c1c', fontWeight: 'bold' }]}>
-              {todayAttendance?.is_late ? `Telat ${todayAttendance.late_minutes ? `${todayAttendance.late_minutes}m` : ''}` : 'Jam Masuk'}
-            </Text>
+        {/* BARIS JAM UTAMA: MASUK & PULANG (LEGA & SIMETRIS) */}
+        <View style={styles.attendanceMainRow}>
+          {/* Kolom 1: Jam Masuk */}
+          <View style={styles.attendanceMainBox}>
+            <View style={[
+              styles.attendanceIconCircle, 
+              { backgroundColor: todayAttendance?.clock_in ? '#dcfce7' : '#f1f5f9' }
+            ]}>
+              <MaterialIcons 
+                name="login" 
+                size={22} 
+                color={todayAttendance?.clock_in ? (todayAttendance.is_late ? '#b91c1c' : '#166534') : theme.colors.textMuted} 
+              />
+            </View>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={[styles.mainTimeText, todayAttendance?.clock_in && { color: todayAttendance.is_late ? '#b91c1c' : '#166534' }]}>
+                {checkInTime}
+              </Text>
+              <Text style={styles.mainLabel}>Jam Masuk</Text>
+              <Text style={[styles.mainSubStatus, todayAttendance?.is_late && { color: '#b91c1c', fontWeight: 'bold' }]} numberOfLines={1}>
+                {todayAttendance?.clock_in 
+                  ? (todayAttendance.is_late ? `Telat ${todayAttendance.late_minutes ? `${todayAttendance.late_minutes}m` : ''}` : 'Tepat Waktu')
+                  : 'Belum Check In'}
+              </Text>
+            </View>
           </View>
           
-          <View style={styles.divider} />
+          <View style={styles.mainDivider} />
           
-          <View style={styles.attendanceBox}>
-            <MaterialIcons 
-              name="logout" 
-              size={24} 
-              color={todayAttendance?.clock_out ? (todayAttendance.is_early_leave ? '#b45309' : theme.colors.danger) : theme.colors.textMuted} 
-            />
-            <Text style={[styles.timeText, todayAttendance?.clock_out && { color: todayAttendance.is_early_leave ? '#b45309' : theme.colors.danger }]}>
-              {checkOutTime}
-            </Text>
-            <Text style={[styles.statusLabel, todayAttendance?.is_early_leave && { color: '#b45309', fontWeight: 'bold' }]}>
-              {todayAttendance?.is_early_leave ? `Cepat ${todayAttendance.early_leave_minutes ? `${todayAttendance.early_leave_minutes}m` : ''}` : 'Jam Pulang'}
+          {/* Kolom 2: Jam Pulang */}
+          <View style={styles.attendanceMainBox}>
+            <View style={[
+              styles.attendanceIconCircle, 
+              { backgroundColor: todayAttendance?.clock_out ? '#fee2e2' : '#f1f5f9' }
+            ]}>
+              <MaterialIcons 
+                name="logout" 
+                size={22} 
+                color={todayAttendance?.clock_out ? '#e11d48' : theme.colors.textMuted} 
+              />
+            </View>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={[styles.mainTimeText, todayAttendance?.clock_out && { color: '#e11d48' }]}>
+                {checkOutTime}
+              </Text>
+              <Text style={styles.mainLabel}>Jam Pulang</Text>
+              <Text style={[styles.mainSubStatus, todayAttendance?.is_early_leave && { color: '#b45309', fontWeight: 'bold' }]} numberOfLines={1}>
+                {todayAttendance?.clock_out 
+                  ? (todayAttendance.is_early_leave ? `Cepat ${todayAttendance.early_leave_minutes ? `${todayAttendance.early_leave_minutes}m` : ''}` : 'Selesai Kerja')
+                  : 'Belum Pulang'}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* STRIP PRESENSI ISTIRAHAT: JAM ABSEN KELUAR & MASUK KEMBALI */}
+        <View style={styles.homeBreakStrip}>
+          <View style={styles.homeBreakIconWrap}>
+            <MaterialIcons name="free-breakfast" size={17} color="#d97706" />
+          </View>
+          <View style={{ flex: 1, paddingRight: 6 }}>
+            <Text style={styles.homeBreakTitle}>Absensi Istirahat</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
+              <Text style={styles.homeBreakLabel}>Mulai: </Text>
+              <Text style={styles.homeBreakTimeBold}>
+                {todayAttendance?.break_start ? `${todayAttendance.break_start.substring(0, 5)} WIB` : '--:--'}
+              </Text>
+              <Text style={[styles.homeBreakLabel, { marginLeft: 12 }]}>Masuk: </Text>
+              <Text style={styles.homeBreakTimeBold}>
+                {todayAttendance?.break_end ? `${todayAttendance.break_end.substring(0, 5)} WIB` : '--:--'}
+              </Text>
+            </View>
+          </View>
+          
+          {/* Badge Status Istirahat */}
+          <View style={[
+            styles.homeBreakStatusBadge,
+            todayAttendance?.break_end
+              ? { backgroundColor: '#dcfce7' }
+              : todayAttendance?.break_start
+                ? { backgroundColor: '#fef3c7' }
+                : { backgroundColor: '#f1f5f9' }
+          ]}>
+            <Text style={[
+              styles.homeBreakStatusText,
+              todayAttendance?.break_end
+                ? { color: '#166534' }
+                : todayAttendance?.break_start
+                  ? { color: '#92400e' }
+                  : { color: theme.colors.textMuted }
+            ]}>
+              {todayAttendance?.break_end
+                ? 'Selesai'
+                : todayAttendance?.break_start
+                  ? 'Rehat'
+                  : 'Belum'}
             </Text>
           </View>
         </View>
@@ -406,6 +485,21 @@ export function HomeScreen() {
               <Text style={styles.infoTitle}>Jam Kerja Hari Ini</Text>
               <Text style={styles.infoSubtitle}>
                 {todayScheduleText}
+              </Text>
+            </View>
+          </View>
+          
+          <View style={styles.cardDivider} />
+
+          {/* JADWAL WAKTU ISTIRAHAT KERJA */}
+          <View style={styles.ruleItem}>
+            <View style={[styles.iconWrap, { backgroundColor: '#FEF3C7' }]}>
+              <MaterialIcons name="free-breakfast" size={24} color="#d97706" />
+            </View>
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoTitle}>Waktu Istirahat Kerja</Text>
+              <Text style={styles.infoSubtitle}>
+                {todayBreakScheduleText}
               </Text>
             </View>
           </View>
@@ -492,11 +586,107 @@ const styles = StyleSheet.create({
   statusBadgeSmall: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
   statusBadgeSmallText: { fontSize: 11, fontWeight: 'bold' },
   currentDate: { fontSize: 16, color: theme.colors.text, fontWeight: 'bold', marginBottom: theme.spacing.m },
-  attendanceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: theme.spacing.xs },
-  attendanceBox: { flex: 1, alignItems: 'center' },
-  divider: { width: 1, height: 40, backgroundColor: '#f1f5f9' },
-  timeText: { fontSize: 22, fontWeight: 'bold', color: theme.colors.text, marginTop: 4 },
-  statusLabel: { fontSize: 12, color: theme.colors.textMuted, marginTop: 2 },
+  attendanceMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    marginTop: 4,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9'
+  },
+  attendanceMainBox: {
+    flex: 1,
+    alignItems: 'center'
+  },
+  attendanceIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6
+  },
+  mainDivider: {
+    width: 1,
+    height: 64,
+    backgroundColor: '#f1f5f9'
+  },
+  mainTimeText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: theme.colors.text,
+    letterSpacing: -0.5
+  },
+  mainLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginTop: 2
+  },
+  mainSubStatus: {
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    marginTop: 2,
+    fontWeight: '500'
+  },
+
+  homeBreakStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fef3c7',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 12
+  },
+  homeBreakIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#fef3c7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10
+  },
+  homeBreakTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#92400e',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4
+  },
+  homeBreakLabel: {
+    fontSize: 12,
+    color: '#92400e',
+    fontWeight: '500'
+  },
+  homeBreakTimes: {
+    fontSize: 13,
+    color: '#78350f',
+    marginTop: 1
+  },
+  homeBreakTimeBold: {
+    fontWeight: 'bold',
+    color: '#78350f',
+    fontSize: 14
+  },
+  homeBreakTimeSub: {
+    fontSize: 11,
+    color: '#b45309',
+    fontWeight: '500'
+  },
+  homeBreakStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8
+  },
+  homeBreakStatusText: {
+    fontSize: 11,
+    fontWeight: 'bold'
+  },
   
   homeLocationWarningBanner: {
     flexDirection: 'row',

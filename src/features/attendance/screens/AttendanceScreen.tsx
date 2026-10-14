@@ -37,6 +37,12 @@ interface AttendanceItem {
   clock_out_latitude?: number | null;
   clock_out_longitude?: number | null;
   clock_out_distance_meters?: number | null;
+  break_start?: string | null;
+  break_end?: string | null;
+  break_start_latitude?: string | number | null;
+  break_start_longitude?: string | number | null;
+  break_end_latitude?: string | number | null;
+  break_end_longitude?: string | number | null;
   notes?: string | null;
   overtime_hours?: string | null;
   is_late?: boolean | null;
@@ -63,6 +69,8 @@ export interface WorkTimeData {
   dispensation_time?: string | null;
   work_end_time?: string | null;
   overtime_start_time?: string | null;
+  break_start_time?: string | null;
+  break_end_time?: string | null;
   closed_days?: number[];
   today?: string;
   day_name?: string;
@@ -410,6 +418,32 @@ export function AttendanceScreen() {
   const hasClockedInToday = Boolean(todayRecord?.clock_in);
   const hasClockedOutToday = Boolean(todayRecord?.clock_out);
 
+  // Status Istirahat Hari Ini
+  const todayBreakStart = useMemo(() => {
+    return todayRecord?.break_start ? todayRecord.break_start.substring(0, 5) : null;
+  }, [todayRecord]);
+
+  const todayBreakEnd = useMemo(() => {
+    return todayRecord?.break_end ? todayRecord.break_end.substring(0, 5) : null;
+  }, [todayRecord]);
+
+  const hasStartedBreakToday = Boolean(todayRecord?.break_start);
+  const hasEndedBreakToday = Boolean(todayRecord?.break_end);
+  const isCurrentlyOnBreak = hasStartedBreakToday && !hasEndedBreakToday;
+
+  // Jadwal Jam Istirahat Kantor
+  const breakScheduleText = useMemo(() => {
+    if (workTimeData?.break_end_time) {
+      const start = workTimeData.break_start_time
+        ? workTimeData.break_start_time.substring(0, 5)
+        : '';
+      const end = workTimeData.break_end_time.substring(0, 5);
+      if (start) return `${start} - ${end}`;
+      return `s/d ${end}`;
+    }
+    return '12:00 - 13:00';
+  }, [workTimeData]);
+
   // Kalkulasi jarak real-time dari posisi GPS ke titik Cabang (jika koordinat cabang valid)
   const distanceInfo = useMemo(() => {
     if (!currentCoords || !isBranchLocationConfigured || effectiveBranchLatitude == null || effectiveBranchLongitude == null) {
@@ -460,22 +494,162 @@ export function AttendanceScreen() {
     }
   }, [time, workEndLabel]);
 
-  // Sub-label tombol Check Out
-  const checkOutSubLabel = useMemo(() => {
-    if (hasClockedOutToday) {
-      return `Sudah (${todayRecord?.clock_out?.substring(0, 5)})`;
-    }
+  // Konfigurasi Tombol Pintar Presensi (Smart Action Button)
+  const smartAction = useMemo(() => {
+    // 1. Belum Masuk Kerja
     if (!hasClockedInToday) {
-      return 'Perlu Check In';
-    }
-    if (!isEndTimeReached) {
-      return `Pulang Awal (Jam ${workEndLabel})`;
-    }
-    return 'Selesai Kerja';
-  }, [hasClockedOutToday, todayRecord, hasClockedInToday, isEndTimeReached, workEndLabel]);
+      let sub = 'Tekan untuk Mulai Jam Kerja';
+      let disabled = false;
+      if (!isBranchLocationConfigured) {
+        sub = 'Lokasi Kantor Belum Dikonfigurasi';
+        disabled = true;
+      } else if (isOutsideRadius && distanceInfo) {
+        sub = `Luar Radius (${distanceInfo.distance}m dari kantor)`;
+        disabled = true;
+      } else if (isMockGps) {
+        sub = 'Peringatan: Fake GPS Terdeteksi';
+        disabled = true;
+      } else if (!currentCoords) {
+        sub = 'Mencari Titik Koordinat GPS...';
+        disabled = true;
+      }
 
-  // Trigger Action Check-in / Check-out Langsung
-  const handleTriggerAction = (type: 'Check In' | 'Check Out') => {
+      return {
+        type: 'Check In' as const,
+        title: 'Check In (Masuk Kerja)',
+        sub,
+        icon: 'login' as keyof typeof MaterialIcons.glyphMap,
+        btnColor: '#10b981',
+        disabled,
+        canSkipToCheckout: false,
+        isCompleted: false
+      };
+    }
+
+    // 2. Sedang Istirahat (Belum Selesai Istirahat)
+    if (isCurrentlyOnBreak) {
+      let sub = `Istirahat sejak ${todayBreakStart} WIB • Tekan jika selesai`;
+      let disabled = false;
+      if (!isBranchLocationConfigured) {
+        sub = 'Lokasi Kantor Belum Dikonfigurasi';
+        disabled = true;
+      } else if (isOutsideRadius && distanceInfo) {
+        sub = `Luar Radius (${distanceInfo.distance}m dari kantor)`;
+        disabled = true;
+      } else if (isMockGps) {
+        sub = 'Peringatan: Fake GPS Terdeteksi';
+        disabled = true;
+      } else if (!currentCoords) {
+        sub = 'Mencari Titik Koordinat GPS...';
+        disabled = true;
+      }
+
+      return {
+        type: 'Selesai Istirahat' as const,
+        title: 'Selesai Istirahat',
+        sub,
+        icon: 'task-alt' as keyof typeof MaterialIcons.glyphMap,
+        btnColor: '#4f46e5',
+        disabled,
+        canSkipToCheckout: false,
+        isCompleted: false
+      };
+    }
+
+    // 3. Sudah Masuk, Belum Mulai Istirahat, dan Belum Check Out
+    if (!hasStartedBreakToday && !hasClockedOutToday) {
+      let sub = `Jadwal Istirahat: ${breakScheduleText} WIB`;
+      let disabled = false;
+      if (!isBranchLocationConfigured) {
+        sub = 'Lokasi Kantor Belum Dikonfigurasi';
+        disabled = true;
+      } else if (isOutsideRadius && distanceInfo) {
+        sub = `Luar Radius (${distanceInfo.distance}m dari kantor)`;
+        disabled = true;
+      } else if (isMockGps) {
+        sub = 'Peringatan: Fake GPS Terdeteksi';
+        disabled = true;
+      } else if (!currentCoords) {
+        sub = 'Mencari Titik Koordinat GPS...';
+        disabled = true;
+      }
+
+      return {
+        type: 'Mulai Istirahat' as const,
+        title: 'Mulai Istirahat',
+        sub,
+        icon: 'free-breakfast' as keyof typeof MaterialIcons.glyphMap,
+        btnColor: '#d97706',
+        disabled,
+        canSkipToCheckout: true,
+        isCompleted: false
+      };
+    }
+
+    // 4. Sudah Selesai Istirahat (atau langsung), Belum Pulang
+    if (!hasClockedOutToday) {
+      let sub = !isEndTimeReached ? `Pulang Awal (Jadwal: ${workEndLabel} WIB)` : `Selesai Jam Kerja (${workEndLabel} WIB)`;
+      let disabled = false;
+      if (!isBranchLocationConfigured) {
+        sub = 'Lokasi Kantor Belum Dikonfigurasi';
+        disabled = true;
+      } else if (isOutsideRadius && distanceInfo) {
+        sub = `Luar Radius (${distanceInfo.distance}m dari kantor)`;
+        disabled = true;
+      } else if (isMockGps) {
+        sub = 'Peringatan: Fake GPS Terdeteksi';
+        disabled = true;
+      } else if (!currentCoords) {
+        sub = 'Mencari Titik Koordinat GPS...';
+        disabled = true;
+      }
+
+      return {
+        type: 'Check Out' as const,
+        title: 'Check Out (Pulang Kerja)',
+        sub,
+        icon: 'logout' as keyof typeof MaterialIcons.glyphMap,
+        btnColor: '#f43f5e',
+        disabled,
+        canSkipToCheckout: false,
+        isCompleted: false
+      };
+    }
+
+    // 5. Presensi Lengkap Hari Ini (Sudah Check Out)
+    const inTime = todayRecord?.clock_in?.substring(0, 5) || '--:--';
+    const outTime = todayRecord?.clock_out?.substring(0, 5) || '--:--';
+    const brkTime = todayRecord?.break_start ? ` • Istirahat: ${todayRecord.break_start.substring(0, 5)}` : '';
+
+    return {
+      type: 'Check Out' as const,
+      title: 'Presensi Hari Ini Selesai',
+      sub: `Masuk: ${inTime}${brkTime} • Pulang: ${outTime} WIB`,
+      icon: 'check-circle' as keyof typeof MaterialIcons.glyphMap,
+      btnColor: '#059669',
+      disabled: true,
+      canSkipToCheckout: false,
+      isCompleted: true
+    };
+  }, [
+    hasClockedInToday,
+    isCurrentlyOnBreak,
+    hasStartedBreakToday,
+    hasClockedOutToday,
+    isBranchLocationConfigured,
+    isOutsideRadius,
+    distanceInfo,
+    isMockGps,
+    currentCoords,
+    todayBreakStart,
+    breakScheduleText,
+    isEndTimeReached,
+    workEndLabel,
+    todayRecord
+  ]);
+
+  // Trigger Action Check-in / Break / Check-out
+  const handleTriggerAction = (type: 'Check In' | 'Check Out' | 'Mulai Istirahat' | 'Selesai Istirahat') => {
     // 0. Validasi Pengaturan Lokasi Cabang oleh Admin (Latitude, Longitude & Radius)
     if (!isBranchLocationConfigured) {
       showToast({
@@ -517,12 +691,76 @@ export function AttendanceScreen() {
       return;
     }
 
-    // 4. Validasi Jam Kerja: Check Out
+    // 4. Validasi Alur Mulai Istirahat
+    if (type === 'Mulai Istirahat') {
+      if (!hasClockedInToday) {
+        showToast({
+          title: 'Belum Check In',
+          message: 'Anda harus melakukan Check In terlebih dahulu sebelum mulai istirahat.',
+          type: 'warning'
+        });
+        return;
+      }
+      if (hasStartedBreakToday) {
+        showToast({
+          title: 'Sudah Istirahat',
+          message: `Anda sudah mencatat mulai istirahat hari ini (${todayBreakStart} WIB).`,
+          type: 'info'
+        });
+        return;
+      }
+      if (hasClockedOutToday) {
+        showToast({
+          title: 'Sudah Check Out',
+          message: 'Jam kerja Anda hari ini telah selesai.',
+          type: 'info'
+        });
+        return;
+      }
+    }
+
+    // 5. Validasi Alur Selesai Istirahat
+    if (type === 'Selesai Istirahat') {
+      if (!hasClockedInToday) {
+        showToast({
+          title: 'Belum Check In',
+          message: 'Anda belum melakukan Check In hari ini.',
+          type: 'warning'
+        });
+        return;
+      }
+      if (!hasStartedBreakToday) {
+        showToast({
+          title: 'Belum Mulai Istirahat',
+          message: 'Anda belum mencatat mulai istirahat.',
+          type: 'warning'
+        });
+        return;
+      }
+      if (hasEndedBreakToday) {
+        showToast({
+          title: 'Sudah Selesai Istirahat',
+          message: `Anda sudah mencatat selesai istirahat hari ini (${todayBreakEnd} WIB).`,
+          type: 'info'
+        });
+        return;
+      }
+    }
+
+    // 6. Validasi Jam Kerja: Check Out
     if (type === 'Check Out') {
       if (!hasClockedInToday) {
         showToast({
           title: 'Belum Check In',
           message: 'Anda harus melakukan Check In terlebih dahulu sebelum Check Out.',
+          type: 'warning'
+        });
+        return;
+      }
+      if (isCurrentlyOnBreak) {
+        showToast({
+          title: 'Selesaikan Istirahat Dahulu',
+          message: 'Anda sedang dalam status istirahat. Harap tekan tombol "Selesai Istirahat" terlebih dahulu sebelum Check Out.',
           type: 'warning'
         });
         return;
@@ -550,19 +788,37 @@ export function AttendanceScreen() {
       }
     }
 
-    // 5. Konfirmasi Langsung Sekali Klik
-    const isCheckIn = type === 'Check In';
+    // 7. Konfirmasi Modal
     const isClosed = workTimeData?.is_closed_today;
     const closedWarning = isClosed
       ? `\n\n⚠️ Catatan: Hari ini adalah hari libur / toko tutup (${workTimeData?.day_name || 'Libur'}).`
       : '';
 
+    let confirmTitle = 'Konfirmasi Presensi';
+    let confirmMsg = `Waktu: ${formattedTime}${closedWarning}`;
+    let confirmType: 'info' | 'danger' = 'info';
+
+    if (type === 'Check In') {
+      confirmTitle = 'Konfirmasi Absensi Masuk';
+      confirmMsg = `Apakah Anda ingin mencatat Check In (Masuk) sekarang?\n\nWaktu: ${formattedTime}${closedWarning}`;
+    } else if (type === 'Check Out') {
+      confirmTitle = 'Konfirmasi Absensi Pulang';
+      confirmMsg = `Apakah Anda ingin mencatat Check Out (Pulang) sekarang?\n\nWaktu: ${formattedTime}${closedWarning}`;
+      confirmType = 'danger';
+    } else if (type === 'Mulai Istirahat') {
+      confirmTitle = 'Konfirmasi Mulai Istirahat';
+      confirmMsg = `Apakah Anda ingin mencatat Mulai Istirahat sekarang?\n\nWaktu: ${formattedTime}`;
+    } else if (type === 'Selesai Istirahat') {
+      confirmTitle = 'Konfirmasi Selesai Istirahat';
+      confirmMsg = `Apakah Anda ingin menyelesaikan istirahat dan kembali bekerja sekarang?\n\nWaktu: ${formattedTime}`;
+    }
+
     showConfirm({
-      title: isCheckIn ? 'Konfirmasi Absensi Masuk' : 'Konfirmasi Absensi Pulang',
-      message: `Apakah Anda ingin mencatat ${isCheckIn ? 'Check In (Masuk)' : 'Check Out (Pulang)'} sekarang?\n\nWaktu: ${formattedTime}${closedWarning}`,
-      confirmText: isCheckIn ? 'Ya, Check In' : 'Ya, Check Out',
+      title: confirmTitle,
+      message: confirmMsg,
+      confirmText: `Ya, ${type}`,
       cancelText: 'Batal',
-      type: isCheckIn ? 'info' : 'danger',
+      type: confirmType,
       onConfirm: async () => {
         await executeAttendance(type);
       }
@@ -570,7 +826,7 @@ export function AttendanceScreen() {
   };
 
   // Eksekusi Kirim Presensi ke API Langsung
-  const executeAttendance = async (type: 'Check In' | 'Check Out') => {
+  const executeAttendance = async (type: 'Check In' | 'Check Out' | 'Mulai Istirahat' | 'Selesai Istirahat') => {
     if (!isBranchLocationConfigured) {
       showToast({
         title: 'Lokasi Belum Diatur',
@@ -606,8 +862,14 @@ export function AttendanceScreen() {
       const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://dieselmart.pagaruyungdiesel.cloud';
       const token = await AsyncStorage.getItem('userToken');
 
-      const isCheckIn = type === 'Check In';
-      const endpoint = isCheckIn ? '/api/my/presensi/check-in' : '/api/my/presensi/check-out';
+      let endpoint = '/api/my/presensi/check-in';
+      if (type === 'Check Out') {
+        endpoint = '/api/my/presensi/check-out';
+      } else if (type === 'Mulai Istirahat') {
+        endpoint = '/api/my/presensi/break-start';
+      } else if (type === 'Selesai Istirahat') {
+        endpoint = '/api/my/presensi/break-end';
+      }
       
       const payload: any = {
         latitude: currentCoords.latitude,
@@ -813,7 +1075,7 @@ export function AttendanceScreen() {
             {/* GARIS PEMBATAS DALAM KARTU */}
             <View style={styles.unifiedCardDivider} />
 
-            {/* BARIS BAWAH: JADWAL JAM KERJA */}
+            {/* BARIS BAWAH: JADWAL JAM KERJA & RADIUS */}
             <View style={styles.scheduleGrid}>
               <View style={styles.scheduleBox}>
                 <Text style={styles.scheduleBoxLabel}>Jam Masuk</Text>
@@ -849,66 +1111,89 @@ export function AttendanceScreen() {
                 </Text>
               </View>
             </View>
+
+            {/* STRIP JADWAL ISTIRAHAT KANTOR CABANG */}
+            <View style={styles.breakScheduleRow}>
+              <View style={styles.breakScheduleIconWrap}>
+                <MaterialIcons name="free-breakfast" size={15} color="#d97706" />
+              </View>
+              <Text style={styles.breakScheduleLabel}>Jadwal Istirahat:</Text>
+              <Text style={styles.breakScheduleValue}>{breakScheduleText} WIB</Text>
+            </View>
           </View>
         </View>
 
-        {/* ACTION BUTTONS (CHECK IN / CHECK OUT) */}
-        <View style={styles.actionRow}>
-          {/* TOMBOL CHECK IN */}
+        {/* BANNER NOTIFIKASI JIKA SEDANG WAKTU ISTIRAHAT */}
+        {isCurrentlyOnBreak && (
+          <View style={styles.activeBreakBanner}>
+            <View style={styles.activeBreakIconWrap}>
+              <MaterialIcons name="free-breakfast" size={24} color="#d97706" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.activeBreakTitle}>Sedang Waktu Istirahat</Text>
+              <Text style={styles.activeBreakDesc}>
+                Mulai istirahat pukul {todayBreakStart} WIB. Tekan 'Selesai Istirahat' jika Anda telah kembali ke area kantor dan siap bekerja.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* TOMBOL PINTAR PRESENSI (SMART ATTENDANCE ACTION BUTTON) */}
+        <View style={styles.smartButtonContainer}>
           <TouchableOpacity 
             style={[
-              styles.actionBtn, 
-              styles.btnIn, 
-              (!isBranchLocationConfigured || isOutsideRadius || hasClockedInToday || isMockGps || !currentCoords) && styles.btnDisabled
+              styles.smartBtn, 
+              { backgroundColor: smartAction.btnColor },
+              (smartAction.disabled && !smartAction.isCompleted) && styles.smartBtnDisabled,
+              smartAction.isCompleted && styles.smartBtnCompleted
             ]}
-            onPress={() => handleTriggerAction('Check In')}
-            disabled={!isBranchLocationConfigured || isOutsideRadius || hasClockedInToday || isMockGps || !currentCoords || isSubmitting}
-            activeOpacity={0.8}
+            onPress={() => {
+              if (!smartAction.isCompleted) {
+                handleTriggerAction(smartAction.type);
+              }
+            }}
+            disabled={smartAction.disabled || smartAction.isCompleted || isSubmitting}
+            activeOpacity={smartAction.isCompleted ? 1 : 0.85}
           >
-            <View style={[styles.btnIconWrap, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-              <MaterialIcons name="login" size={28} color="#fff" />
+            <View style={styles.smartBtnContent}>
+              <View style={[
+                styles.smartBtnIconWrap,
+                smartAction.isCompleted && { backgroundColor: 'rgba(255,255,255,0.25)' }
+              ]}>
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <MaterialIcons name={smartAction.icon} size={28} color="#fff" />
+                )}
+              </View>
+
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={styles.smartBtnTitle}>{smartAction.title}</Text>
+                <Text style={styles.smartBtnSub} numberOfLines={1}>{smartAction.sub}</Text>
+              </View>
+
+              {!smartAction.isCompleted && !smartAction.disabled && (
+                <View style={styles.smartBtnArrowWrap}>
+                  <MaterialIcons name="arrow-forward" size={20} color="#fff" />
+                </View>
+              )}
             </View>
-            <Text style={styles.btnTitle}>Check In</Text>
-            <Text style={styles.btnSub}>
-              {!isBranchLocationConfigured
-                ? 'Lokasi Belum Diatur'
-                : isOutsideRadius
-                  ? `Luar Radius (${distanceInfo?.distance}m)`
-                  : hasClockedInToday 
-                    ? (todayRecord?.is_late 
-                        ? `Sudah (${todayRecord?.clock_in?.substring(0, 5)}) • Telat ${todayRecord.late_minutes ? `${todayRecord.late_minutes}m` : ''}` 
-                        : `Sudah (${todayRecord?.clock_in?.substring(0, 5)}) • Tepat`)
-                    : 'Mulai Kerja'}
-            </Text>
           </TouchableOpacity>
 
-          {/* TOMBOL CHECK OUT */}
-          <TouchableOpacity 
-            style={[
-              styles.actionBtn, 
-              styles.btnOut, 
-              (!isBranchLocationConfigured || isOutsideRadius || !hasClockedInToday || hasClockedOutToday || isMockGps || !currentCoords) && styles.btnDisabled
-            ]}
-            onPress={() => handleTriggerAction('Check Out')}
-            disabled={!isBranchLocationConfigured || isOutsideRadius || !hasClockedInToday || hasClockedOutToday || isMockGps || !currentCoords || isSubmitting}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.btnIconWrap, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-              <MaterialIcons name="logout" size={28} color="#fff" />
-            </View>
-            <Text style={styles.btnTitle}>Check Out</Text>
-            <Text style={styles.btnSub}>
-              {!isBranchLocationConfigured
-                ? 'Lokasi Belum Diatur'
-                : isOutsideRadius
-                  ? `Luar Radius (${distanceInfo?.distance}m)`
-                  : hasClockedOutToday 
-                    ? (todayRecord?.is_early_leave
-                        ? `Sudah (${todayRecord?.clock_out?.substring(0, 5)}) • Cepat ${todayRecord.early_leave_minutes ? `${todayRecord.early_leave_minutes}m` : ''}`
-                        : `Sudah (${todayRecord?.clock_out?.substring(0, 5)})`)
-                    : checkOutSubLabel}
-            </Text>
-          </TouchableOpacity>
+          {/* OPSI CHECK OUT LANGSUNG JIKA BELUM ISTIRAHAT */}
+          {smartAction.canSkipToCheckout && (
+            <TouchableOpacity 
+              style={styles.skipCheckoutBtn}
+              onPress={() => handleTriggerAction('Check Out')}
+              activeOpacity={0.7}
+              disabled={isOutsideRadius || !isBranchLocationConfigured || isMockGps || !currentCoords || isSubmitting}
+            >
+              <MaterialIcons name="logout" size={16} color="#64748b" style={{ marginRight: 6 }} />
+              <Text style={styles.skipCheckoutText}>
+                Atau langsung <Text style={{ fontWeight: 'bold', color: '#f43f5e' }}>Check Out (Pulang)</Text>
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* BANNER PERINGATAN JIKA BERADA DI LUAR RADIUS */}
@@ -1004,6 +1289,24 @@ export function AttendanceScreen() {
                           <Text style={[styles.statusText, { color: statusInfo.text }]}>{statusInfo.label}</Text>
                         </View>
                       </View>
+
+                      {/* Baris Jam Istirahat (Jika Tercatat) */}
+                      {item.break_start ? (
+                        <>
+                          <View style={styles.timeDivider} />
+                          <View style={styles.timeRow}>
+                            <View style={styles.timeRowLeft}>
+                              <View style={styles.timeLabelWrap}>
+                                <View style={[styles.dot, { backgroundColor: '#d97706' }]} />
+                                <Text style={styles.timeLabel}>Istirahat</Text>
+                              </View>
+                              <Text style={styles.timeValue}>
+                                {item.break_start.substring(0, 5)} - {item.break_end ? item.break_end.substring(0, 5) : 'Rehat'}
+                              </Text>
+                            </View>
+                          </View>
+                        </>
+                      ) : null}
 
                       {/* Divider Line */}
                       <View style={styles.timeDivider} />
@@ -1273,31 +1576,151 @@ const styles = StyleSheet.create({
     backgroundColor: '#f1f5f9'
   },
 
-  actionRow: {
+  breakScheduleRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 10
+  },
+  breakScheduleIconWrap: {
+    marginRight: 8
+  },
+  breakScheduleLabel: {
+    fontSize: 12,
+    color: '#92400e',
+    fontWeight: '500',
+    marginRight: 6
+  },
+  breakScheduleValue: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#78350f'
+  },
+  scheduleBreakBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6
+  },
+  scheduleBreakBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold'
+  },
+
+  activeBreakBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    borderRadius: 16,
+    padding: 14,
+    marginHorizontal: theme.spacing.l,
+    marginTop: 14,
+    elevation: 2,
+    shadowColor: '#d97706',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 }
+  },
+  activeBreakIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fef3c7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12
+  },
+  activeBreakTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#92400e',
+    marginBottom: 2
+  },
+  activeBreakDesc: {
+    fontSize: 12,
+    color: '#b45309',
+    lineHeight: 17
+  },
+
+  smartButtonContainer: {
     paddingHorizontal: theme.spacing.l,
-    marginTop: 18,
-    justifyContent: 'space-between'
+    marginTop: 18
   },
-  actionBtn: {
-    flex: 1,
-    padding: theme.spacing.l,
-    borderRadius: theme.radius.l,
-    elevation: 4,
+  smartBtn: {
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    elevation: 5,
     shadowColor: '#000',
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.15,
     shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    marginHorizontal: theme.spacing.xs,
-    justifyContent: 'center'
+    shadowOffset: { width: 0, height: 4 }
   },
-  btnIn: { backgroundColor: '#10b981' },
-  btnOut: { backgroundColor: '#f43f5e' },
-  btnDisabled: { backgroundColor: '#cbd5e1', elevation: 0, shadowOpacity: 0 },
-  
-  btnIconWrap: { width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-  btnTitle: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
-  btnSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 3 },
+  smartBtnCompleted: {
+    backgroundColor: '#059669',
+    elevation: 1,
+    shadowOpacity: 0.06
+  },
+  smartBtnDisabled: {
+    backgroundColor: '#94a3b8',
+    elevation: 0,
+    shadowOpacity: 0
+  },
+  smartBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  smartBtnIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14
+  },
+  smartBtnTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#fff',
+    letterSpacing: -0.2
+  },
+  smartBtnSub: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.92)',
+    marginTop: 3,
+    fontWeight: '500'
+  },
+  smartBtnArrowWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  skipCheckoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#f1f5f9'
+  },
+  skipCheckoutText: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '500'
+  },
 
   historySection: {
     paddingHorizontal: theme.spacing.l,
