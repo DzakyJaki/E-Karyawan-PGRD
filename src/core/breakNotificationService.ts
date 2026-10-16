@@ -418,6 +418,16 @@ async function checkAndTriggerActiveReminders() {
 
     const now = new Date();
     const todayStr = cachedWorkTimeData.today || now.toISOString().split('T')[0];
+
+    // Pembersihan otomatis: Hapus cache flag notifikasi dari hari-hari sebelumnya agar tidak menumpuk
+    try {
+      const allKeys = await AsyncStorage.getAllKeys();
+      const oldAlertKeys = allKeys.filter((k) => k.startsWith('@alert_v3_') && !k.includes(todayStr));
+      if (oldAlertKeys.length > 0) {
+        await AsyncStorage.multiRemove(oldAlertKeys);
+      }
+    } catch {}
+
     const hasStartedBreak = Boolean(cachedTodayAttendance?.break_start);
     const hasEndedBreak = Boolean(cachedTodayAttendance?.break_end);
 
