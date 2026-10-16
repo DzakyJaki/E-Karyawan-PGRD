@@ -56,6 +56,7 @@ export function triggerBreakAlert(alert: BreakAlertEvent) {
 interface SafeNotificationsAPI {
   scheduleNotificationAsync: (request: any) => Promise<string>;
   cancelScheduledNotificationAsync: (id: string) => Promise<void>;
+  cancelAllScheduledNotificationsAsync?: () => Promise<void>;
   setNotificationHandler: (handler: any) => void;
   setNotificationChannelAsync: (channelId: string, channel: any) => Promise<any>;
   getPermissionsAsync: () => Promise<any>;
@@ -112,6 +113,8 @@ function getSafeNotifications(): SafeNotificationsAPI | null {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const cancel = require('expo-notifications/build/cancelScheduledNotificationAsync');
     // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const cancelAll = require('expo-notifications/build/cancelAllScheduledNotificationsAsync');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const handler = require('expo-notifications/build/NotificationsHandler');
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const perms = require('expo-notifications/build/NotificationPermissions');
@@ -139,6 +142,7 @@ function getSafeNotifications(): SafeNotificationsAPI | null {
     cachedNotifications = {
       scheduleNotificationAsync: sched.scheduleNotificationAsync,
       cancelScheduledNotificationAsync: cancel.cancelScheduledNotificationAsync,
+      cancelAllScheduledNotificationsAsync: cancelAll.cancelAllScheduledNotificationsAsync,
       setNotificationHandler: handler.setNotificationHandler,
       setNotificationChannelAsync: setNotificationChannelAsync || (async () => null),
       getPermissionsAsync: perms.getPermissionsAsync,
@@ -159,7 +163,12 @@ function getSafeNotifications(): SafeNotificationsAPI | null {
 /**
  * Mengirim notifikasi sistem ke background (drawer / status bar / lockscreen Android)
  */
-async function sendSystemNotification(title: string, body: string, delaySeconds: number = 0) {
+async function sendSystemNotification(
+  title: string, 
+  body: string, 
+  delaySeconds: number = 0,
+  identifier?: string
+) {
   try {
     const notif = getSafeNotifications();
     if (!notif || typeof notif.scheduleNotificationAsync !== 'function') {
@@ -188,6 +197,7 @@ async function sendSystemNotification(title: string, body: string, delaySeconds:
     let notifId: string | null = null;
     try {
       notifId = await notif.scheduleNotificationAsync({
+        ...(identifier ? { identifier } : {}),
         content: {
           title,
           body,
@@ -216,6 +226,7 @@ async function sendSystemNotification(title: string, body: string, delaySeconds:
           : null;
 
         notifId = await notif.scheduleNotificationAsync({
+          ...(identifier ? { identifier } : {}),
           content: {
             title,
             body,
@@ -369,10 +380,16 @@ function parseTodayTimeString(timeStr?: string | null): Date | null {
  */
 export async function cancelAllBreakReminders() {
   try {
+    const notif = getSafeNotifications();
+    // 1. Batalkan semua notifikasi di antrean sistem OS secara menyeluruh
+    if (notif && typeof notif.cancelAllScheduledNotificationsAsync === 'function') {
+      await notif.cancelAllScheduledNotificationsAsync().catch(() => {});
+    }
+
+    // 2. Batalkan juga berdasarkan tracking ID lama jika ada
     const rawIds = await AsyncStorage.getItem(BREAK_NOTIF_IDS_KEY);
     if (rawIds) {
       const ids: string[] = JSON.parse(rawIds);
-      const notif = getSafeNotifications();
       if (notif && typeof notif.cancelScheduledNotificationAsync === 'function') {
         for (const id of ids) {
           await notif.cancelScheduledNotificationAsync(id).catch(() => {});
@@ -562,20 +579,40 @@ export function startBreakTicker() {
  * 1. POP-UP DI LAYAR (In-App Heads-Up Banner meluncur dari atas layaknya WhatsApp)
  * 2. DI BELAKANG APLIKASI (Notifikasi sistem Android di status bar & drawer)
  */
+let isSchedulingInProgress = false;
+let lastScheduledFingerprint = '';
+let lastScheduledTimestamp = 0;
+
 export async function scheduleBreakReminders(
   workTimeData: any,
   todayAttendance?: { break_start?: string | null; break_end?: string | null } | null
 ) {
   try {
+    if (!workTimeData || workTimeData.is_closed_today) {
+      return;
+    }
+
+    const todayStr = workTimeData.today || new Date().toISOString().split('T')[0];
+    const fingerprint = `${todayStr}_${workTimeData.break_type}_${workTimeData.break_start_time}_${workTimeData.break_end_time}_${todayAttendance?.break_start || ''}_${todayAttendance?.break_end || ''}`;
+    const nowMs = Date.now();
+
+    // Pencegahan duplikasi: jika konfigurasi sama persis dan baru saja dijadwalkan dalam 10 detik terakhir, abaikan pemanggilan berulang
+    if (fingerprint === lastScheduledFingerprint && nowMs - lastScheduledTimestamp < 10000) {
+      return;
+    }
+
+    if (isSchedulingInProgress) {
+      return;
+    }
+    isSchedulingInProgress = true;
+    lastScheduledFingerprint = fingerprint;
+    lastScheduledTimestamp = nowMs;
+
     cachedWorkTimeData = workTimeData;
     cachedTodayAttendance = todayAttendance;
 
     await initBreakNotificationService();
     await cancelAllBreakReminders();
-
-    if (!workTimeData || workTimeData.is_closed_today) {
-      return;
-    }
 
     const now = new Date();
     const hasStartedBreak = Boolean(todayAttendance?.break_start);
@@ -588,7 +625,7 @@ export async function scheduleBreakReminders(
     // 1. Periksa jendela aktif saat ini seketika (Immediate check)
     await checkAndTriggerActiveReminders();
 
-    // 2. Jadwalkan waktu-waktu di masa depan ke sistem Android (Background scheduler)
+    // 2. Jadwalkan waktu-waktu di masa depan ke sistem Android dengan identifier unik (Background scheduler)
     const isShift = workTimeData.break_type === 'shift' || (
       Boolean(workTimeData.break_start_time) && 
       Boolean(workTimeData.break_end_time) && 
@@ -614,7 +651,8 @@ export async function scheduleBreakReminders(
           const id = await sendSystemNotification(
             `⏰ 5 Menit Menuju Waktu Istirahat ${shiftName}`.trim(),
             `Waktu istirahat Anda akan dimulai dalam 5 menit (pukul ${startLabel} WIB). Bersiaplah untuk istirahat.`,
-            delay
+            delay,
+            'break-shift-start-before'
           );
           if (id) scheduledIds.push(id);
         }
@@ -624,7 +662,8 @@ export async function scheduleBreakReminders(
           const id = await sendSystemNotification(
             `☕ Waktu Istirahat Telah Dimulai ${shiftName}`.trim(),
             `Sudah 5 menit memasuki waktu istirahat (${startLabel} WIB). Jangan lupa catat presensi 'Mulai Istirahat' di aplikasi!`,
-            delay
+            delay,
+            'break-shift-start-now'
           );
           if (id) scheduledIds.push(id);
         }
@@ -639,7 +678,8 @@ export async function scheduleBreakReminders(
           const id = await sendSystemNotification(
             `⏳ 5 Menit Menuju Waktu Masuk ${shiftName}`.trim(),
             `Waktu istirahat tersisa 5 menit lagi (selesai pukul ${endLabel} WIB). Bersiaplah kembali bekerja.`,
-            delay
+            delay,
+            'break-shift-end-before'
           );
           if (id) scheduledIds.push(id);
         }
@@ -649,7 +689,8 @@ export async function scheduleBreakReminders(
           const id = await sendSystemNotification(
             `🏢 Waktu Masuk Kembali! ${shiftName}`.trim(),
             `Jam istirahat telah berakhir 5 menit yang lalu (${endLabel} WIB). Jangan lupa tekan 'Selesai Istirahat' di aplikasi.`,
-            delay
+            delay,
+            'break-shift-end-now'
           );
           if (id) scheduledIds.push(id);
         }
@@ -667,7 +708,8 @@ export async function scheduleBreakReminders(
           const id = await sendSystemNotification(
             `⚠️ 5 Menit Menuju Batas Istirahat Kantor`,
             `Batas akhir waktu istirahat kantor tersisa 5 menit lagi (pukul ${untilLabel} WIB). Pastikan Anda telah kembali bekerja.`,
-            delay
+            delay,
+            'break-kantor-limit-before'
           );
           if (id) scheduledIds.push(id);
         }
@@ -677,7 +719,8 @@ export async function scheduleBreakReminders(
           const id = await sendSystemNotification(
             `🏢 Batas Istirahat Kantor Telah Berakhir`,
             `Batas waktu istirahat kantor telah berakhir 5 menit yang lalu (${untilLabel} WIB). Pastikan Anda telah menyelesaikan presensi rehat.`,
-            delay
+            delay,
+            'break-kantor-limit-now'
           );
           if (id) scheduledIds.push(id);
         }
@@ -689,5 +732,7 @@ export async function scheduleBreakReminders(
     }
   } catch (err) {
     console.log('Safe warning: scheduleBreakReminders error:', err);
+  } finally {
+    isSchedulingInProgress = false;
   }
 }

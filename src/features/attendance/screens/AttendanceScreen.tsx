@@ -303,7 +303,6 @@ export function AttendanceScreen() {
         if (json && json.data) {
           setWorkTimeData(json.data);
           await AsyncStorage.setItem('cachedWorkTime', JSON.stringify(json.data));
-          scheduleBreakReminders(json.data).catch(() => {});
         }
       }
     } catch (err) {
