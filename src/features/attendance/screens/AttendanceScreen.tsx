@@ -16,6 +16,7 @@ import {
 import { useConfirm } from '../../../core/ConfirmContext';
 import { theme } from '../../../core/theme';
 import { useToast } from '../../../core/ToastContext';
+import { scheduleBreakReminders } from '../../../core/breakNotificationService';
 
 const MONTH_NAMES_INDONESIA = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -69,8 +70,12 @@ export interface WorkTimeData {
   dispensation_time?: string | null;
   work_end_time?: string | null;
   overtime_start_time?: string | null;
+  break_type?: 'kantor' | 'shift' | string | null;
+  break_shift_id?: number | null;
+  break_shift_name?: string | null;
   break_start_time?: string | null;
   break_end_time?: string | null;
+  kantor_break_until?: string | null;
   closed_days?: number[];
   today?: string;
   day_name?: string;
@@ -298,6 +303,7 @@ export function AttendanceScreen() {
         if (json && json.data) {
           setWorkTimeData(json.data);
           await AsyncStorage.setItem('cachedWorkTime', JSON.stringify(json.data));
+          scheduleBreakReminders(json.data).catch(() => {});
         }
       }
     } catch (err) {
@@ -431,17 +437,35 @@ export function AttendanceScreen() {
   const hasEndedBreakToday = Boolean(todayRecord?.break_end);
   const isCurrentlyOnBreak = hasStartedBreakToday && !hasEndedBreakToday;
 
-  // Jadwal Jam Istirahat Kantor
+  // Jadwal Jam Istirahat Kantor / Shift
   const breakScheduleText = useMemo(() => {
-    if (workTimeData?.break_end_time) {
-      const start = workTimeData.break_start_time
-        ? workTimeData.break_start_time.substring(0, 5)
-        : '';
-      const end = workTimeData.break_end_time.substring(0, 5);
-      if (start) return `${start} - ${end}`;
-      return `s/d ${end}`;
+    if (workTimeData?.is_closed_today) {
+      return 'Libur';
     }
-    return '12:00 - 13:00';
+
+    // 1. Tipe Shift atau Berjadwal: Memiliki shift_name atau jam mulai & selesai
+    if (workTimeData?.break_type === 'shift' || (workTimeData?.break_start_time && workTimeData?.break_end_time && workTimeData?.break_type !== 'kantor')) {
+      const start = workTimeData?.break_start_time ? workTimeData.break_start_time.substring(0, 5) : '--:--';
+      const end = workTimeData?.break_end_time ? workTimeData.break_end_time.substring(0, 5) : '--:--';
+      if (workTimeData?.break_shift_name) {
+        return `${workTimeData.break_shift_name} (${start} - ${end})`;
+      }
+      return `${start} - ${end}`;
+    }
+
+    // 2. Tipe Kantor: Fleksibel dengan batas waktu tertentu (kantor_break_until)
+    if (workTimeData?.break_type === 'kantor' || workTimeData?.kantor_break_until) {
+      const until = workTimeData?.kantor_break_until
+        ? workTimeData.kantor_break_until.substring(0, 5)
+        : '15:00';
+      return `Batas s/d ${until}`;
+    }
+
+    if (workTimeData?.break_end_time) {
+      return `s/d ${workTimeData.break_end_time.substring(0, 5)}`;
+    }
+
+    return 'Batas s/d 15:00';
   }, [workTimeData]);
 
   // Kalkulasi jarak real-time dari posisi GPS ke titik Cabang (jika koordinat cabang valid)
@@ -493,6 +517,115 @@ export function AttendanceScreen() {
       return false;
     }
   }, [time, workEndLabel]);
+
+  // Sinkronisasi otomatis notifikasi pengingat istirahat (5 menit sebelum & sesudah)
+  useEffect(() => {
+    if (workTimeData) {
+      scheduleBreakReminders(workTimeData, todayRecord).catch(() => {});
+    }
+  }, [workTimeData, todayRecord]);
+
+  // Cek apakah waktu saat ini berada dalam rentang 5 menit sebelum / sesudah jam istirahat / masuk
+  const breakProximityAlert = useMemo(() => {
+    if (!workTimeData || workTimeData.is_closed_today || hasEndedBreakToday) {
+      return null;
+    }
+    const nowMs = time.getTime();
+
+    // 1. Skenario Shift / Berjadwal
+    if (workTimeData.break_type === 'shift' || (workTimeData.break_start_time && workTimeData.break_end_time && workTimeData.break_type !== 'kantor')) {
+      const shiftName = workTimeData.break_shift_name ? `(${workTimeData.break_shift_name})` : '';
+      const startParts = workTimeData.break_start_time?.split(':');
+      const endParts = workTimeData.break_end_time?.split(':');
+
+      if (startParts && startParts.length >= 2 && !hasStartedBreakToday) {
+        const dStart = new Date(time);
+        dStart.setHours(parseInt(startParts[0], 10), parseInt(startParts[1], 10), 0, 0);
+        const diffMinutes = Math.round((dStart.getTime() - nowMs) / 60000);
+
+        if (diffMinutes > 0 && diffMinutes <= 5) {
+          return {
+            title: `Waktu Istirahat ${diffMinutes} Menit Lagi`,
+            message: `Waktu istirahat Anda ${shiftName} dimulai pukul ${workTimeData.break_start_time?.substring(0, 5) || ''} WIB. Bersiaplah untuk istirahat.`,
+            color: '#d97706',
+            bgColor: '#fffbeb',
+            borderColor: '#fde68a',
+            iconBg: '#fef3c7'
+          };
+        }
+        if (diffMinutes <= 0 && diffMinutes >= -5) {
+          return {
+            title: 'Waktu Istirahat Sedang Berjalan',
+            message: `Waktu istirahat telah tiba. Jangan lupa tekan tombol 'Mulai Istirahat' di bawah.`,
+            color: '#b45309',
+            bgColor: '#fef3c7',
+            borderColor: '#fcd34d',
+            iconBg: '#fde68a'
+          };
+        }
+      }
+
+      if (endParts && endParts.length >= 2) {
+        const dEnd = new Date(time);
+        dEnd.setHours(parseInt(endParts[0], 10), parseInt(endParts[1], 10), 0, 0);
+        const diffMinutes = Math.round((dEnd.getTime() - nowMs) / 60000);
+
+        if (diffMinutes > 0 && diffMinutes <= 5) {
+          return {
+            title: `Istirahat Berakhir ${diffMinutes} Menit Lagi`,
+            message: `Waktu istirahat selesai pukul ${workTimeData.break_end_time?.substring(0, 5) || ''} WIB. Bersiaplah untuk masuk kembali.`,
+            color: '#4f46e5',
+            bgColor: '#eef2ff',
+            borderColor: '#c7d2fe',
+            iconBg: '#e0e7ff'
+          };
+        }
+        if (diffMinutes <= 0 && diffMinutes >= -5 && !hasEndedBreakToday) {
+          return {
+            title: 'Waktu Masuk Kembali Telah Tiba',
+            message: `Jam istirahat telah berakhir. Segera tekan 'Selesai Istirahat' untuk melanjutkan pekerjaan.`,
+            color: '#dc2626',
+            bgColor: '#fef2f2',
+            borderColor: '#fecaca',
+            iconBg: '#fee2e2'
+          };
+        }
+      }
+    }
+
+    // 2. Skenario Kantor (Batas s/d 15:00)
+    if (workTimeData.break_type === 'kantor' || workTimeData.kantor_break_until) {
+      const untilParts = (workTimeData.kantor_break_until || '15:00').split(':');
+      if (untilParts.length >= 2) {
+        const dLimit = new Date(time);
+        dLimit.setHours(parseInt(untilParts[0], 10), parseInt(untilParts[1], 10), 0, 0);
+        const diffMinutes = Math.round((dLimit.getTime() - nowMs) / 60000);
+
+        if (diffMinutes > 0 && diffMinutes <= 5) {
+          return {
+            title: `Batas Istirahat Kantor ${diffMinutes} Menit Lagi`,
+            message: `Batas waktu istirahat kantor adalah pukul ${untilParts[0]}:${untilParts[1]} WIB. Pastikan Anda telah menyelesaikan rehat.`,
+            color: '#d97706',
+            bgColor: '#fffbeb',
+            borderColor: '#fde68a',
+            iconBg: '#fef3c7'
+          };
+        }
+        if (diffMinutes <= 0 && diffMinutes >= -5) {
+          return {
+            title: 'Batas Istirahat Kantor Telah Lewat',
+            message: `Batas waktu istirahat kantor telah berakhir. Pastikan Anda telah berada di tempat kerja.`,
+            color: '#dc2626',
+            bgColor: '#fef2f2',
+            borderColor: '#fecaca',
+            iconBg: '#fee2e2'
+          };
+        }
+      }
+    }
+
+    return null;
+  }, [workTimeData, time, hasStartedBreakToday, hasEndedBreakToday]);
 
   // Konfigurasi Tombol Pintar Presensi (Smart Action Button)
   const smartAction = useMemo(() => {
@@ -558,32 +691,101 @@ export function AttendanceScreen() {
 
     // 3. Sudah Masuk, Belum Mulai Istirahat, dan Belum Check Out
     if (!hasStartedBreakToday && !hasClockedOutToday) {
-      let sub = `Jadwal Istirahat: ${breakScheduleText} WIB`;
-      let disabled = false;
-      if (!isBranchLocationConfigured) {
-        sub = 'Lokasi Kantor Belum Dikonfigurasi';
-        disabled = true;
-      } else if (isOutsideRadius && distanceInfo) {
-        sub = `Luar Radius (${distanceInfo.distance}m dari kantor)`;
-        disabled = true;
-      } else if (isMockGps) {
-        sub = 'Peringatan: Fake GPS Terdeteksi';
-        disabled = true;
-      } else if (!currentCoords) {
-        sub = 'Mencari Titik Koordinat GPS...';
-        disabled = true;
+      const isShift = workTimeData?.break_type === 'shift' || (
+        Boolean(workTimeData?.break_start_time) && 
+        Boolean(workTimeData?.break_end_time) && 
+        workTimeData?.break_type !== 'kantor'
+      );
+      const isKantor = workTimeData?.break_type === 'kantor' || (!isShift && Boolean(workTimeData?.kantor_break_until));
+
+      let isBreakExpired = false;
+      let isBreakUnlocked = true;
+      let shiftBreakStartLabel = '';
+      let shiftBreakEndLabel = '';
+      let kantorUntilLabel = '15:00';
+
+      if (isShift && workTimeData?.break_start_time) {
+        shiftBreakStartLabel = workTimeData.break_start_time.substring(0, 5);
+        shiftBreakEndLabel = workTimeData.break_end_time ? workTimeData.break_end_time.substring(0, 5) : '';
+        const startParts = workTimeData.break_start_time.split(':');
+        const endParts = (workTimeData.break_end_time || '').split(':');
+
+        if (startParts.length >= 2) {
+          const dStart = new Date(time);
+          dStart.setHours(parseInt(startParts[0], 10), parseInt(startParts[1], 10), 0, 0);
+          const unlockTime = new Date(dStart.getTime() - 5 * 60 * 1000);
+          // Sebelum rentang shift (sebelum H-5 menit) -> belum dibuka
+          if (time.getTime() < unlockTime.getTime()) {
+            isBreakUnlocked = false;
+          }
+        }
+
+        if (endParts.length >= 2) {
+          const dEnd = new Date(time);
+          dEnd.setHours(parseInt(endParts[0], 10), parseInt(endParts[1], 10), 0, 0);
+          // Selepas rentang shift istirahat berakhir -> tidak bisa istirahat lagi
+          if (time.getTime() > dEnd.getTime()) {
+            isBreakExpired = true;
+          }
+        }
+      } else if (isKantor) {
+        kantorUntilLabel = workTimeData?.kantor_break_until ? workTimeData.kantor_break_until.substring(0, 5) : '15:00';
+        const untilParts = kantorUntilLabel.split(':');
+        if (untilParts.length >= 2) {
+          const dLimit = new Date(time);
+          dLimit.setHours(parseInt(untilParts[0], 10), parseInt(untilParts[1], 10), 0, 0);
+          // Selepas batas kantor (jam 15:00) -> tidak bisa istirahat lagi
+          if (time.getTime() > dLimit.getTime()) {
+            isBreakExpired = true;
+          }
+        }
       }
 
-      return {
-        type: 'Mulai Istirahat' as const,
-        title: 'Mulai Istirahat',
-        sub,
-        icon: 'free-breakfast' as keyof typeof MaterialIcons.glyphMap,
-        btnColor: '#d97706',
-        disabled,
-        canSkipToCheckout: true,
-        isCompleted: false
-      };
+      // JIKA WAKTU ISTIRAHAT BELUM LEWAT:
+      // Tampilkan tombol Mulai Istirahat (Aktif jika dalam rentang, atau Terkunci jika belum jamnya)
+      if (!isBreakExpired) {
+        let sub = `Jadwal Istirahat: ${breakScheduleText} WIB`;
+        if (isShift) {
+          if (!isBreakUnlocked) {
+            sub = `Belum Waktu Istirahat • Jadwal: ${shiftBreakStartLabel} WIB (Buka -5 mnt)`;
+          } else {
+            sub = `Rentang Shift Istirahat • s/d ${shiftBreakEndLabel} WIB`;
+          }
+        } else if (isKantor) {
+          sub = `Batas Istirahat: s/d ${kantorUntilLabel} WIB`;
+        }
+
+        let disabled = false;
+        if (!isBreakUnlocked) {
+          disabled = true;
+        } else if (!isBranchLocationConfigured) {
+          sub = 'Lokasi Kantor Belum Dikonfigurasi';
+          disabled = true;
+        } else if (isOutsideRadius && distanceInfo) {
+          sub = `Luar Radius (${distanceInfo.distance}m dari kantor)`;
+          disabled = true;
+        } else if (isMockGps) {
+          sub = 'Peringatan: Fake GPS Terdeteksi';
+          disabled = true;
+        } else if (!currentCoords) {
+          sub = 'Mencari Titik Koordinat GPS...';
+          disabled = true;
+        }
+
+        return {
+          type: 'Mulai Istirahat' as const,
+          title: isBreakUnlocked ? 'Mulai Istirahat' : 'Belum Jam Istirahat',
+          sub,
+          icon: isBreakUnlocked ? ('free-breakfast' as keyof typeof MaterialIcons.glyphMap) : ('lock-clock' as keyof typeof MaterialIcons.glyphMap),
+          btnColor: isBreakUnlocked ? '#d97706' : '#94a3b8',
+          disabled,
+          canSkipToCheckout: true,
+          isCompleted: false
+        };
+      }
+
+      // JIKA WAKTU ISTIRAHAT SUDAH SELESAI / LEWAT (Selepas jam 15:00 untuk kantor atau lewat shift):
+      // Karyawan tidak bisa istirahat lagi -> Otomatis beralih ke tombol Check Out (Pulang Kerja)
     }
 
     // 4. Sudah Selesai Istirahat (atau langsung), Belum Pulang
@@ -645,7 +847,9 @@ export function AttendanceScreen() {
     breakScheduleText,
     isEndTimeReached,
     workEndLabel,
-    todayRecord
+    todayRecord,
+    workTimeData,
+    time
   ]);
 
   // Trigger Action Check-in / Break / Check-out
@@ -716,6 +920,68 @@ export function AttendanceScreen() {
           type: 'info'
         });
         return;
+      }
+
+      const isShift = workTimeData?.break_type === 'shift' || (
+        Boolean(workTimeData?.break_start_time) && 
+        Boolean(workTimeData?.break_end_time) && 
+        workTimeData?.break_type !== 'kantor'
+      );
+      const isKantor = workTimeData?.break_type === 'kantor' || (!isShift && Boolean(workTimeData?.kantor_break_until));
+
+      // Validasi Jadwal Shift
+      if (isShift && workTimeData?.break_start_time) {
+        const startParts = workTimeData.break_start_time.split(':');
+        const endParts = (workTimeData.break_end_time || '').split(':');
+        const startLabel = workTimeData.break_start_time.substring(0, 5);
+        const endLabel = workTimeData.break_end_time ? workTimeData.break_end_time.substring(0, 5) : '';
+
+        // 1. Sebelum rentang shift
+        if (startParts.length >= 2) {
+          const dStart = new Date();
+          dStart.setHours(parseInt(startParts[0], 10), parseInt(startParts[1], 10), 0, 0);
+          const unlockTime = new Date(dStart.getTime() - 5 * 60 * 1000);
+          if (Date.now() < unlockTime.getTime()) {
+            showToast({
+              title: 'Belum Jam Istirahat',
+              message: `Jadwal istirahat shift Anda adalah pukul ${startLabel} WIB. Tombol dapat ditekan mulai 5 menit sebelumnya.`,
+              type: 'warning'
+            });
+            return;
+          }
+        }
+
+        // 2. Selepas rentang shift
+        if (endParts.length >= 2) {
+          const dEnd = new Date();
+          dEnd.setHours(parseInt(endParts[0], 10), parseInt(endParts[1], 10), 0, 0);
+          if (Date.now() > dEnd.getTime()) {
+            showToast({
+              title: 'Waktu Istirahat Shift Berakhir',
+              message: `Rentang waktu istirahat shift Anda (${startLabel} - ${endLabel} WIB) telah berakhir. Anda tidak dapat lagi memulai istirahat.`,
+              type: 'warning'
+            });
+            return;
+          }
+        }
+      }
+
+      // Validasi Kantor (Maksimal s/d 15:00)
+      if (isKantor) {
+        const kantorUntil = workTimeData?.kantor_break_until ? workTimeData.kantor_break_until.substring(0, 5) : '15:00';
+        const untilParts = kantorUntil.split(':');
+        if (untilParts.length >= 2) {
+          const dLimit = new Date();
+          dLimit.setHours(parseInt(untilParts[0], 10), parseInt(untilParts[1], 10), 0, 0);
+          if (Date.now() > dLimit.getTime()) {
+            showToast({
+              title: 'Batas Istirahat Berakhir',
+              message: `Batas waktu istirahat kantor telah berakhir (maksimal pukul ${kantorUntil} WIB). Selepas jam tersebut Anda tidak dapat lagi memulai istirahat.`,
+              type: 'warning'
+            });
+            return;
+          }
+        }
       }
     }
 
@@ -1117,7 +1383,13 @@ export function AttendanceScreen() {
               <View style={styles.breakScheduleIconWrap}>
                 <MaterialIcons name="free-breakfast" size={15} color="#d97706" />
               </View>
-              <Text style={styles.breakScheduleLabel}>Jadwal Istirahat:</Text>
+              <Text style={styles.breakScheduleLabel}>
+                {workTimeData?.break_type === 'shift'
+                  ? 'Istirahat Shift:'
+                  : workTimeData?.break_type === 'kantor'
+                    ? 'Istirahat Kantor:'
+                    : 'Jadwal Istirahat:'}
+              </Text>
               <Text style={styles.breakScheduleValue}>{breakScheduleText} WIB</Text>
             </View>
           </View>
@@ -1132,7 +1404,28 @@ export function AttendanceScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.activeBreakTitle}>Sedang Waktu Istirahat</Text>
               <Text style={styles.activeBreakDesc}>
-                Mulai istirahat pukul {todayBreakStart} WIB. Tekan 'Selesai Istirahat' jika Anda telah kembali ke area kantor dan siap bekerja.
+                {workTimeData?.break_type === 'shift'
+                  ? `Mulai istirahat pukul ${todayBreakStart} WIB (Jadwal: ${breakScheduleText} WIB). Tekan 'Selesai Istirahat' jika Anda telah kembali ke area kantor.`
+                  : workTimeData?.break_type === 'kantor'
+                    ? `Mulai istirahat pukul ${todayBreakStart} WIB (Batas s/d ${workTimeData?.kantor_break_until ? workTimeData.kantor_break_until.substring(0, 5) : '15:00'} WIB). Tekan 'Selesai Istirahat' jika Anda telah kembali bekerja.`
+                    : `Mulai istirahat pukul ${todayBreakStart} WIB. Tekan 'Selesai Istirahat' jika Anda telah kembali ke area kantor dan siap bekerja.`}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* BANNER PENGINGAT 5 MENIT SEBELUM / SESUDAH ISTIRAHAT */}
+        {breakProximityAlert && (
+          <View style={[styles.proximityAlertBanner, { backgroundColor: breakProximityAlert.bgColor, borderColor: breakProximityAlert.borderColor }]}>
+            <View style={[styles.proximityAlertIconWrap, { backgroundColor: breakProximityAlert.iconBg }]}>
+              <MaterialIcons name="notifications-active" size={22} color={breakProximityAlert.color} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.proximityAlertTitle, { color: breakProximityAlert.color }]}>
+                {breakProximityAlert.title}
+              </Text>
+              <Text style={styles.proximityAlertDesc}>
+                {breakProximityAlert.message}
               </Text>
             </View>
           </View>
@@ -1646,6 +1939,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#b45309',
     lineHeight: 17
+  },
+
+  proximityAlertBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    marginHorizontal: theme.spacing.l,
+    marginTop: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 }
+  },
+  proximityAlertIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12
+  },
+  proximityAlertTitle: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    marginBottom: 2
+  },
+  proximityAlertDesc: {
+    fontSize: 12,
+    color: '#334155',
+    lineHeight: 16
   },
 
   smartButtonContainer: {

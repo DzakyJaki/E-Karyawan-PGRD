@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../../core/theme';
+import { scheduleBreakReminders } from '../../../core/breakNotificationService';
 
 const { width } = Dimensions.get('window');
 
@@ -116,13 +117,19 @@ export function HomeScreen() {
       }
 
       // Handle Presensi Hari Ini & Total Bulan Ini
+      let currentTodayRec: TodayAttendance | null = null;
       if (presJson && Array.isArray(presJson.data)) {
-        const todayRec = presJson.data.find((item: any) => item.date === todayYMD);
-        setTodayAttendance(todayRec || null);
+        currentTodayRec = presJson.data.find((item: any) => item.date === todayYMD) || null;
+        setTodayAttendance(currentTodayRec);
         setAttendanceCount(presJson.data.length);
       } else {
         setTodayAttendance(null);
         setAttendanceCount(0);
+      }
+
+      // Jadwalkan pengingat notifikasi istirahat 5 menit sebelum & sesudah
+      if (workTimeJson && workTimeJson.data) {
+        scheduleBreakReminders(workTimeJson.data, currentTodayRec).catch(() => {});
       }
 
       // Handle Sisa Cuti (Hanya jenis cuti yang memiliki alokasi kuota > 0)
@@ -259,11 +266,130 @@ export function HomeScreen() {
     ? `${todayDayName} • Libur / Tutup`
     : `${todayDayName} • ${workStartTime} - ${workEndTime} WIB`;
 
-  const breakStartTime = workTimeData?.break_start_time ? workTimeData.break_start_time.substring(0, 5) : '00:00';
-  const breakEndTime = workTimeData?.break_end_time ? workTimeData.break_end_time.substring(0, 5) : '13:15';
-  const todayBreakScheduleText = isWorkClosedToday
-    ? 'Libur (Tidak ada jam istirahat)'
-    : `${breakStartTime} - ${breakEndTime} WIB`;
+  const todayBreakScheduleText = useMemo(() => {
+    if (isWorkClosedToday) {
+      return 'Libur (Tidak ada jam istirahat)';
+    }
+    // 1. Tipe Shift atau Berjadwal: Memiliki shift_name atau jam mulai & selesai
+    if (workTimeData?.break_type === 'shift' || (workTimeData?.break_start_time && workTimeData?.break_end_time && workTimeData?.break_type !== 'kantor')) {
+      const start = workTimeData?.break_start_time ? workTimeData.break_start_time.substring(0, 5) : '--:--';
+      const end = workTimeData?.break_end_time ? workTimeData.break_end_time.substring(0, 5) : '--:--';
+      if (workTimeData?.break_shift_name) {
+        return `${workTimeData.break_shift_name} (${start} - ${end} WIB)`;
+      }
+      return `${start} - ${end} WIB`;
+    }
+
+    // 2. Tipe Kantor (Fleksibel hingga batas kantor_break_until)
+    if (workTimeData?.break_type === 'kantor' || workTimeData?.kantor_break_until) {
+      const until = workTimeData?.kantor_break_until
+        ? workTimeData.kantor_break_until.substring(0, 5)
+        : '15:00';
+      return `Fleksibel (Maksimal s/d ${until} WIB)`;
+    }
+
+    if (workTimeData?.break_end_time) {
+      return `Maksimal s/d ${workTimeData.break_end_time.substring(0, 5)} WIB`;
+    }
+    return 'Fleksibel (Maksimal s/d 15:00 WIB)';
+  }, [isWorkClosedToday, workTimeData]);
+
+  // Cek apakah waktu saat ini berada dalam rentang 5 menit sebelum / sesudah jam istirahat / masuk
+  const breakProximityAlert = useMemo(() => {
+    if (!workTimeData || isWorkClosedToday || todayAttendance?.break_end) {
+      return null;
+    }
+    const now = new Date();
+    const nowMs = now.getTime();
+
+    // 1. Skenario Shift
+    if (workTimeData.break_type === 'shift' || (workTimeData.break_start_time && workTimeData.break_end_time && workTimeData.break_type !== 'kantor')) {
+      const shiftName = workTimeData.break_shift_name ? `(${workTimeData.break_shift_name})` : '';
+      const startParts = workTimeData.break_start_time?.split(':');
+      const endParts = workTimeData.break_end_time?.split(':');
+
+      if (startParts && startParts.length >= 2 && !todayAttendance?.break_start) {
+        const dStart = new Date(now);
+        dStart.setHours(parseInt(startParts[0], 10), parseInt(startParts[1], 10), 0, 0);
+        const diffMinutes = Math.round((dStart.getTime() - nowMs) / 60000);
+
+        if (diffMinutes > 0 && diffMinutes <= 5) {
+          return {
+            title: `Istirahat ${diffMinutes} Menit Lagi`,
+            message: `Waktu istirahat ${shiftName} dimulai pukul ${workTimeData.break_start_time?.substring(0, 5) || ''} WIB.`,
+            color: '#d97706',
+            bgColor: '#fffbeb',
+            borderColor: '#fde68a'
+          };
+        }
+        if (diffMinutes <= 0 && diffMinutes >= -5) {
+          return {
+            title: 'Waktu Istirahat Sedang Berjalan',
+            message: `Sudah waktunya istirahat. Segera tekan menu presensi untuk absen rehat!`,
+            color: '#b45309',
+            bgColor: '#fef3c7',
+            borderColor: '#fcd34d'
+          };
+        }
+      }
+
+      if (endParts && endParts.length >= 2) {
+        const dEnd = new Date(now);
+        dEnd.setHours(parseInt(endParts[0], 10), parseInt(endParts[1], 10), 0, 0);
+        const diffMinutes = Math.round((dEnd.getTime() - nowMs) / 60000);
+
+        if (diffMinutes > 0 && diffMinutes <= 5) {
+          return {
+            title: `Istirahat Berakhir ${diffMinutes} Menit Lagi`,
+            message: `Waktu istirahat selesai pukul ${workTimeData.break_end_time?.substring(0, 5) || ''} WIB. Bersiap kembali bekerja.`,
+            color: '#4f46e5',
+            bgColor: '#eef2ff',
+            borderColor: '#c7d2fe'
+          };
+        }
+        if (diffMinutes <= 0 && diffMinutes >= -5 && !todayAttendance?.break_end) {
+          return {
+            title: 'Waktu Masuk Telah Tiba',
+            message: `Jam istirahat telah berakhir. Jangan lupa buka presensi dan selesaikan istirahat.`,
+            color: '#dc2626',
+            bgColor: '#fef2f2',
+            borderColor: '#fecaca'
+          };
+        }
+      }
+    }
+
+    // 2. Skenario Kantor
+    if (workTimeData.break_type === 'kantor' || workTimeData.kantor_break_until) {
+      const untilParts = (workTimeData.kantor_break_until || '15:00').split(':');
+      if (untilParts.length >= 2) {
+        const dLimit = new Date(now);
+        dLimit.setHours(parseInt(untilParts[0], 10), parseInt(untilParts[1], 10), 0, 0);
+        const diffMinutes = Math.round((dLimit.getTime() - nowMs) / 60000);
+
+        if (diffMinutes > 0 && diffMinutes <= 5) {
+          return {
+            title: `Batas Istirahat Kantor ${diffMinutes} Menit Lagi`,
+            message: `Batas istirahat kantor pukul ${untilParts[0]}:${untilParts[1]} WIB. Pastikan Anda telah menyelesaikan rehat.`,
+            color: '#d97706',
+            bgColor: '#fffbeb',
+            borderColor: '#fde68a'
+          };
+        }
+        if (diffMinutes <= 0 && diffMinutes >= -5) {
+          return {
+            title: 'Batas Istirahat Kantor Telah Lewat',
+            message: `Batas jam istirahat kantor telah berakhir. Pastikan Anda telah berada di tempat kerja.`,
+            color: '#dc2626',
+            bgColor: '#fef2f2',
+            borderColor: '#fecaca'
+          };
+        }
+      }
+    }
+
+    return null;
+  }, [workTimeData, isWorkClosedToday, todayAttendance]);
 
   return (
     <View style={styles.rootWrapper}>
@@ -420,6 +546,21 @@ export function HomeScreen() {
           </View>
         ) : null}
 
+        {/* PENGINGAT 5 MENIT SEBELUM / SESUDAH ISTIRAHAT */}
+        {breakProximityAlert ? (
+          <View style={[styles.homeProximityAlert, { backgroundColor: breakProximityAlert.bgColor, borderColor: breakProximityAlert.borderColor }]}>
+            <MaterialIcons name="notifications-active" size={16} color={breakProximityAlert.color} style={{ marginRight: 8 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.homeProximityTitle, { color: breakProximityAlert.color }]}>
+                {breakProximityAlert.title}
+              </Text>
+              <Text style={styles.homeProximityDesc}>
+                {breakProximityAlert.message}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.tapToAttendPrompt}>
           <Text style={styles.tapToAttendText}>
             {!isBranchLocationConfigured ? 'Buka menu presensi (Perlu pengaturan admin)' : 'Tekan untuk buka menu presensi GPS'}
@@ -497,7 +638,13 @@ export function HomeScreen() {
               <MaterialIcons name="free-breakfast" size={24} color="#d97706" />
             </View>
             <View style={styles.infoTextContainer}>
-              <Text style={styles.infoTitle}>Waktu Istirahat Kerja</Text>
+              <Text style={styles.infoTitle}>
+                {workTimeData?.break_type === 'shift'
+                  ? 'Waktu Istirahat Shift'
+                  : workTimeData?.break_type === 'kantor'
+                    ? 'Waktu Istirahat Kantor'
+                    : 'Waktu Istirahat Kerja'}
+              </Text>
               <Text style={styles.infoSubtitle}>
                 {todayBreakScheduleText}
               </Text>
@@ -704,6 +851,26 @@ const styles = StyleSheet.create({
     color: '#991b1b',
     fontWeight: '500',
     flex: 1
+  },
+
+  homeProximityAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 10
+  },
+  homeProximityTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 1
+  },
+  homeProximityDesc: {
+    fontSize: 11,
+    color: '#475569',
+    lineHeight: 15
   },
 
   tapToAttendPrompt: {

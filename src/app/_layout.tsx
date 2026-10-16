@@ -3,12 +3,19 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AppLock } from '../components/AppLock';
 import { NetworkNotifier } from '../components/NetworkNotifier';
+import { BreakNotificationBanner } from '../components/BreakNotificationBanner';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
-import { Text, TextInput, View } from 'react-native';
+import { useEffect } from 'react';
+import { Text, View } from 'react-native';
 import { ToastProvider } from '../core/ToastContext';
 import { ConfirmProvider } from '../core/ConfirmContext';
+import { initBreakNotificationService } from '../core/breakNotificationService';
 
 export default function RootLayout() {
+  useEffect(() => {
+    initBreakNotificationService();
+  }, []);
+
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -37,6 +44,7 @@ export default function RootLayout() {
       <ConfirmProvider>
         <ToastProvider>
           <NetworkNotifier />
+          <BreakNotificationBanner />
           <AppLock>
             <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
               <Stack.Screen name="index" />
