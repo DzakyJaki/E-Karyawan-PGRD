@@ -585,7 +585,7 @@ export default function SalaryScreen() {
     <View style={styles.container}>
       <Stack.Screen 
         options={{ 
-          title: isUnlocked ? 'Slip Gaji' : 'Keamanan',
+          title: 'Slip Gaji',
           headerStyle: { backgroundColor: theme.colors.primary },
           headerTintColor: '#fff',
           headerLeft: () => router.canGoBack() ? (
@@ -609,12 +609,12 @@ export default function SalaryScreen() {
             <Text style={styles.titleLock}>
               {!isPinConfigured 
                 ? (setupStep === 1 ? 'Buat PIN Slip Gaji' : 'Konfirmasi PIN Baru')
-                : 'Masukkan PIN Keamanan'}
+                : 'Buka Slip Gaji'}
             </Text>
             <Text style={styles.subtitleLock}>
               {!isPinConfigured
                 ? (setupStep === 1 ? 'Buat 6 digit PIN untuk mengamankan data slip gaji Anda.' : 'Ketik ulang 6 digit PIN untuk konfirmasi.')
-                : (hasBiometrics ? 'Pindai sidik jari atau masukkan 6 digit PIN Anda.' : 'Masukkan 6 digit PIN untuk membuka slip gaji.')}
+                : (hasBiometrics ? 'Pindai sidik jari atau masukkan 6 digit PIN untuk melihat slip gaji.' : 'Masukkan 6 digit PIN untuk melihat slip gaji.')}
             </Text>
           </View>
 
