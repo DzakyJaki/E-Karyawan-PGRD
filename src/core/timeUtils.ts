@@ -62,6 +62,25 @@ export function getEffectiveScheduleForToday(workTimeData: any, targetDate: Date
   const rawEndTime = daySchedule?.work_end_time || workTimeData.work_end_time || '17:00';
   const normalizedEndTime = normalizeTimeString(rawEndTime, rawStartTime);
 
+  // Deteksi Istirahat Serentak (misal hari Jumat Sholat Jumat 11:30 - 13:30)
+  const simultaneousStart = daySchedule?.simultaneous_break_start || workTimeData.simultaneous_break_start || null;
+  const simultaneousEnd = daySchedule?.simultaneous_break_end || workTimeData.simultaneous_break_end || null;
+  const hasSimultaneousBreak = Boolean(simultaneousStart && simultaneousEnd);
+
+  let effectiveBreakType = workTimeData.break_type || 'kantor';
+  let effectiveBreakStart = workTimeData.break_start_time || null;
+  let effectiveBreakEnd = workTimeData.break_end_time || null;
+  let effectiveShiftName = workTimeData.break_shift_name || null;
+
+  if (hasSimultaneousBreak) {
+    // Pada hari dengan istirahat serentak (seperti Jumat 11:30 - 13:30),
+    // seluruh karyawan (baik shift maupun kantor) mengikuti jendela istirahat serentak
+    effectiveBreakType = 'shift';
+    effectiveBreakStart = simultaneousStart;
+    effectiveBreakEnd = simultaneousEnd;
+    effectiveShiftName = dayOfWeek === 5 ? 'Sholat Jumat' : 'Istirahat Serentak';
+  }
+
   return {
     ...workTimeData,
     work_start_time: rawStartTime,
@@ -70,12 +89,13 @@ export function getEffectiveScheduleForToday(workTimeData: any, targetDate: Date
     raw_work_end_time: rawEndTime,
     overtime_start_time: daySchedule?.overtime_start_time || workTimeData.overtime_start_time || '18:05',
     kantor_break_until: daySchedule?.kantor_break_until || workTimeData.kantor_break_until || '15:00',
-    simultaneous_break_start: daySchedule?.simultaneous_break_start || workTimeData.simultaneous_break_start || null,
-    simultaneous_break_end: daySchedule?.simultaneous_break_end || workTimeData.simultaneous_break_end || null,
-    break_type: workTimeData.break_type || 'kantor',
-    break_shift_name: workTimeData.break_shift_name,
-    break_start_time: workTimeData.break_start_time,
-    break_end_time: workTimeData.break_end_time,
+    simultaneous_break_start: simultaneousStart,
+    simultaneous_break_end: simultaneousEnd,
+    has_simultaneous_break: hasSimultaneousBreak,
+    break_type: effectiveBreakType,
+    break_shift_name: effectiveShiftName,
+    break_start_time: effectiveBreakStart,
+    break_end_time: effectiveBreakEnd,
     is_closed_today: isClosedToday,
     is_friday: dayOfWeek === 5,
     day_of_week: dayOfWeek,

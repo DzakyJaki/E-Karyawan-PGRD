@@ -1390,11 +1390,13 @@ export function AttendanceScreen() {
                 <MaterialIcons name="free-breakfast" size={15} color="#d97706" />
               </View>
               <Text style={styles.breakScheduleLabel}>
-                {workTimeData?.break_type === 'shift'
-                  ? 'Istirahat Shift:'
-                  : workTimeData?.break_type === 'kantor'
-                    ? 'Istirahat Kantor:'
-                    : 'Jadwal Istirahat:'}
+                {effectiveWork?.has_simultaneous_break
+                  ? 'Istirahat Jumat:'
+                  : effectiveWork?.break_type === 'shift'
+                    ? 'Istirahat Shift:'
+                    : effectiveWork?.break_type === 'kantor'
+                      ? 'Istirahat Kantor:'
+                      : 'Jadwal Istirahat:'}
               </Text>
               <Text style={styles.breakScheduleValue}>{breakScheduleText} WIB</Text>
             </View>
