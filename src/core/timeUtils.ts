@@ -38,3 +38,46 @@ export function normalizeTimeString(timeStr?: string | null, startStr?: string |
 
   return `${String(hour).padStart(2, '0')}:${min}`;
 }
+
+/**
+ * Mendapatkan konfigurasi jadwal kerja aktif hari ini berdasarkan array schedules dan hari saat ini (0 = Minggu ... 6 = Sabtu).
+ * Jika ada pengaturan harian spesifik (misal hari Jumat / day_of_week: 5), jadwal hari tersebut yang diutamakan.
+ */
+export function getEffectiveScheduleForToday(workTimeData: any, targetDate: Date = new Date()): any {
+  if (!workTimeData) return null;
+
+  const dayOfWeek = targetDate.getDay(); // 0 = Minggu, 1 = Senin, ..., 5 = Jumat, 6 = Sabtu
+  const schedules = Array.isArray(workTimeData.schedules) ? workTimeData.schedules : [];
+  const daySchedule = schedules.find((s: any) => Number(s.day_of_week) === dayOfWeek);
+
+  const isClosedDay = Array.isArray(workTimeData.closed_days)
+    ? workTimeData.closed_days.includes(dayOfWeek)
+    : false;
+
+  const isClosedToday = daySchedule?.is_closed != null
+    ? Boolean(daySchedule.is_closed)
+    : (Boolean(workTimeData.is_closed_today) || isClosedDay);
+
+  const rawStartTime = daySchedule?.work_start_time || workTimeData.work_start_time || '08:00';
+  const rawEndTime = daySchedule?.work_end_time || workTimeData.work_end_time || '17:00';
+  const normalizedEndTime = normalizeTimeString(rawEndTime, rawStartTime);
+
+  return {
+    ...workTimeData,
+    work_start_time: rawStartTime,
+    dispensation_time: daySchedule?.dispensation_time || workTimeData.dispensation_time || '08:15',
+    work_end_time: normalizedEndTime,
+    raw_work_end_time: rawEndTime,
+    overtime_start_time: daySchedule?.overtime_start_time || workTimeData.overtime_start_time || '18:05',
+    kantor_break_until: daySchedule?.kantor_break_until || workTimeData.kantor_break_until || '15:00',
+    simultaneous_break_start: daySchedule?.simultaneous_break_start || workTimeData.simultaneous_break_start || null,
+    simultaneous_break_end: daySchedule?.simultaneous_break_end || workTimeData.simultaneous_break_end || null,
+    break_type: workTimeData.break_type || 'kantor',
+    break_shift_name: workTimeData.break_shift_name,
+    break_start_time: workTimeData.break_start_time,
+    break_end_time: workTimeData.break_end_time,
+    is_closed_today: isClosedToday,
+    is_friday: dayOfWeek === 5,
+    day_of_week: dayOfWeek,
+  };
+}

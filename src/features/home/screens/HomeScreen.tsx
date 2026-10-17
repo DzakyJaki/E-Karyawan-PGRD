@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../../core/theme';
 import { scheduleBreakReminders } from '../../../core/breakNotificationService';
-import { normalizeTimeString } from '../../../core/timeUtils';
+import { getEffectiveScheduleForToday, normalizeTimeString } from '../../../core/timeUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -258,11 +258,17 @@ export function HomeScreen() {
 
   const attendanceBadge = getAttendanceBadge();
 
-  const todayDayName = workTimeData?.day_name || new Date().toLocaleDateString('id-ID', { weekday: 'long' });
-  const isWorkClosedToday = Boolean(workTimeData?.is_closed_today);
-  const workStartTime = workTimeData?.work_start_time ? workTimeData.work_start_time.substring(0, 5) : '08:00';
-  const workEndTime = workTimeData?.work_end_time
-    ? normalizeTimeString(workTimeData.work_end_time, workTimeData.work_start_time)
+  // Resolusi jadwal aktif hari ini (otomatis membaca array schedules hari Jumat / hari kerja lainnya)
+  const activeSchedule = useMemo(() => {
+    return getEffectiveScheduleForToday(workTimeData);
+  }, [workTimeData]);
+  const effectiveWork = activeSchedule || workTimeData;
+
+  const todayDayName = effectiveWork?.day_name || new Date().toLocaleDateString('id-ID', { weekday: 'long' });
+  const isWorkClosedToday = Boolean(effectiveWork?.is_closed_today);
+  const workStartTime = effectiveWork?.work_start_time ? effectiveWork.work_start_time.substring(0, 5) : '08:00';
+  const workEndTime = effectiveWork?.work_end_time
+    ? normalizeTimeString(effectiveWork.work_end_time, effectiveWork.work_start_time)
     : '17:00';
 
   const todayScheduleText = isWorkClosedToday
@@ -274,28 +280,27 @@ export function HomeScreen() {
       return 'Libur (Tidak ada jam istirahat)';
     }
     // 1. Tipe Shift atau Berjadwal: Memiliki shift_name atau jam mulai & selesai
-    if (workTimeData?.break_type === 'shift' || (workTimeData?.break_start_time && workTimeData?.break_end_time && workTimeData?.break_type !== 'kantor')) {
-      const start = workTimeData?.break_start_time ? workTimeData.break_start_time.substring(0, 5) : '--:--';
-      const end = workTimeData?.break_end_time ? workTimeData.break_end_time.substring(0, 5) : '--:--';
-      if (workTimeData?.break_shift_name) {
-        return `${workTimeData.break_shift_name} (${start} - ${end} WIB)`;
+    if (effectiveWork?.break_type === 'shift' || (effectiveWork?.break_start_time && effectiveWork?.break_end_time && effectiveWork?.break_type !== 'kantor')) {
+      const start = effectiveWork?.break_start_time ? effectiveWork.break_start_time.substring(0, 5) : '--:--';
+      const end = effectiveWork?.break_end_time ? effectiveWork.break_end_time.substring(0, 5) : '--:--';
+      if (effectiveWork?.break_shift_name) {
+        return `${effectiveWork.break_shift_name} (${start} - ${end} WIB)`;
       }
       return `${start} - ${end} WIB`;
     }
 
     // 2. Tipe Kantor (Fleksibel hingga batas kantor_break_until)
-    if (workTimeData?.break_type === 'kantor' || workTimeData?.kantor_break_until) {
-      const until = workTimeData?.kantor_break_until
-        ? workTimeData.kantor_break_until.substring(0, 5)
+    if (effectiveWork?.break_type === 'kantor' || effectiveWork?.kantor_break_until) {
+      const until = effectiveWork?.kantor_break_until
+        ? effectiveWork.kantor_break_until.substring(0, 5)
         : '15:00';
       return `Fleksibel (Maksimal s/d ${until} WIB)`;
     }
 
-    if (workTimeData?.break_end_time) {
-      return `Maksimal s/d ${workTimeData.break_end_time.substring(0, 5)} WIB`;
+    if (effectiveWork?.break_end_time) {
+      return `Maksimal s/d ${effectiveWork.break_end_time.substring(0, 5)} WIB`;
     }
-    return 'Fleksibel (Maksimal s/d 15:00 WIB)';
-  }, [isWorkClosedToday, workTimeData]);
+  }, [isWorkClosedToday, effectiveWork]);
 
   // Cek apakah waktu saat ini berada dalam rentang 5 menit sebelum / sesudah jam istirahat / masuk
   const breakProximityAlert = useMemo(() => {
