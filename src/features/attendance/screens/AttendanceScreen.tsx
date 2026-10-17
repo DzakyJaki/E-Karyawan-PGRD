@@ -17,6 +17,7 @@ import { useConfirm } from '../../../core/ConfirmContext';
 import { theme } from '../../../core/theme';
 import { useToast } from '../../../core/ToastContext';
 import { scheduleBreakReminders } from '../../../core/breakNotificationService';
+import { normalizeTimeString } from '../../../core/timeUtils';
 
 const MONTH_NAMES_INDONESIA = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -494,7 +495,7 @@ export function AttendanceScreen() {
   // Jam Pulang kantor / toko (default '17:00')
   const workEndLabel = useMemo(() => {
     if (workTimeData?.work_end_time) {
-      return workTimeData.work_end_time.substring(0, 5);
+      return normalizeTimeString(workTimeData.work_end_time, workTimeData.work_start_time);
     }
     return '17:00';
   }, [workTimeData]);
@@ -1359,7 +1360,7 @@ export function AttendanceScreen() {
               <View style={styles.scheduleBox}>
                 <Text style={styles.scheduleBoxLabel}>Jam Pulang</Text>
                 <Text style={styles.scheduleBoxTime}>
-                  {workTimeData?.work_end_time ? workTimeData.work_end_time.substring(0, 5) : '17:00'}
+                  {workEndLabel}
                 </Text>
                 <Text style={styles.scheduleBoxSub}>WIB</Text>
               </View>

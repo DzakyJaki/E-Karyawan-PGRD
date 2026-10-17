@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../../core/theme';
 import { scheduleBreakReminders } from '../../../core/breakNotificationService';
+import { normalizeTimeString } from '../../../core/timeUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -260,7 +261,9 @@ export function HomeScreen() {
   const todayDayName = workTimeData?.day_name || new Date().toLocaleDateString('id-ID', { weekday: 'long' });
   const isWorkClosedToday = Boolean(workTimeData?.is_closed_today);
   const workStartTime = workTimeData?.work_start_time ? workTimeData.work_start_time.substring(0, 5) : '08:00';
-  const workEndTime = workTimeData?.work_end_time ? workTimeData.work_end_time.substring(0, 5) : '17:00';
+  const workEndTime = workTimeData?.work_end_time
+    ? normalizeTimeString(workTimeData.work_end_time, workTimeData.work_start_time)
+    : '17:00';
 
   const todayScheduleText = isWorkClosedToday
     ? `${todayDayName} • Libur / Tutup`
