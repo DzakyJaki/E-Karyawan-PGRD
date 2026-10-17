@@ -304,17 +304,17 @@ export function HomeScreen() {
 
   // Cek apakah waktu saat ini berada dalam rentang 5 menit sebelum / sesudah jam istirahat / masuk
   const breakProximityAlert = useMemo(() => {
-    if (!workTimeData || isWorkClosedToday || todayAttendance?.break_end) {
+    if (!effectiveWork || isWorkClosedToday || todayAttendance?.break_end) {
       return null;
     }
     const now = new Date();
     const nowMs = now.getTime();
 
     // 1. Skenario Shift
-    if (workTimeData.break_type === 'shift' || (workTimeData.break_start_time && workTimeData.break_end_time && workTimeData.break_type !== 'kantor')) {
-      const shiftName = workTimeData.break_shift_name ? `(${workTimeData.break_shift_name})` : '';
-      const startParts = workTimeData.break_start_time?.split(':');
-      const endParts = workTimeData.break_end_time?.split(':');
+    if (effectiveWork.break_type === 'shift' || (effectiveWork.break_start_time && effectiveWork.break_end_time && effectiveWork.break_type !== 'kantor')) {
+      const shiftName = effectiveWork.break_shift_name ? `(${effectiveWork.break_shift_name})` : '';
+      const startParts = effectiveWork.break_start_time?.split(':');
+      const endParts = effectiveWork.break_end_time?.split(':');
 
       if (startParts && startParts.length >= 2 && !todayAttendance?.break_start) {
         const dStart = new Date(now);
@@ -324,7 +324,7 @@ export function HomeScreen() {
         if (diffMinutes > 0 && diffMinutes <= 5) {
           return {
             title: `Istirahat ${diffMinutes} Menit Lagi`,
-            message: `Waktu istirahat ${shiftName} dimulai pukul ${workTimeData.break_start_time?.substring(0, 5) || ''} WIB.`,
+            message: `Waktu istirahat ${shiftName} dimulai pukul ${effectiveWork.break_start_time?.substring(0, 5) || ''} WIB.`,
             color: '#d97706',
             bgColor: '#fffbeb',
             borderColor: '#fde68a'
@@ -349,7 +349,7 @@ export function HomeScreen() {
         if (diffMinutes > 0 && diffMinutes <= 5) {
           return {
             title: `Istirahat Berakhir ${diffMinutes} Menit Lagi`,
-            message: `Waktu istirahat selesai pukul ${workTimeData.break_end_time?.substring(0, 5) || ''} WIB. Bersiap kembali bekerja.`,
+            message: `Waktu istirahat selesai pukul ${effectiveWork.break_end_time?.substring(0, 5) || ''} WIB. Bersiap kembali bekerja.`,
             color: '#4f46e5',
             bgColor: '#eef2ff',
             borderColor: '#c7d2fe'
@@ -368,8 +368,8 @@ export function HomeScreen() {
     }
 
     // 2. Skenario Kantor
-    if (workTimeData.break_type === 'kantor' || workTimeData.kantor_break_until) {
-      const untilParts = (workTimeData.kantor_break_until || '15:00').split(':');
+    if (effectiveWork.break_type === 'kantor' || effectiveWork.kantor_break_until) {
+      const untilParts = (effectiveWork.kantor_break_until || '15:00').split(':');
       if (untilParts.length >= 2) {
         const dLimit = new Date(now);
         dLimit.setHours(parseInt(untilParts[0], 10), parseInt(untilParts[1], 10), 0, 0);
@@ -397,7 +397,7 @@ export function HomeScreen() {
     }
 
     return null;
-  }, [workTimeData, isWorkClosedToday, todayAttendance]);
+  }, [effectiveWork, isWorkClosedToday, todayAttendance]);
 
   return (
     <View style={styles.rootWrapper}>

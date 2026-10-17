@@ -366,9 +366,14 @@ function parseTodayTimeString(timeStr?: string | null): Date | null {
   const clean = timeStr.trim().split(':');
   if (clean.length < 2) return null;
 
-  const hours = parseInt(clean[0], 10);
+  let hours = parseInt(clean[0], 10);
   const minutes = parseInt(clean[1], 10);
   if (isNaN(hours) || isNaN(minutes)) return null;
+
+  // Jika jam istirahat/batas kantor diinput format 12 jam (misal 01:00 s/d 07:00 sore)
+  if (hours >= 1 && hours <= 7) {
+    hours += 12;
+  }
 
   const d = new Date();
   d.setHours(hours, minutes, 0, 0);

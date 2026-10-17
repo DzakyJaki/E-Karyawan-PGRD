@@ -533,16 +533,16 @@ export function AttendanceScreen() {
 
   // Cek apakah waktu saat ini berada dalam rentang 5 menit sebelum / sesudah jam istirahat / masuk
   const breakProximityAlert = useMemo(() => {
-    if (!workTimeData || workTimeData.is_closed_today || hasEndedBreakToday) {
+    if (!effectiveWork || effectiveWork.is_closed_today || hasEndedBreakToday) {
       return null;
     }
     const nowMs = time.getTime();
 
     // 1. Skenario Shift / Berjadwal
-    if (workTimeData.break_type === 'shift' || (workTimeData.break_start_time && workTimeData.break_end_time && workTimeData.break_type !== 'kantor')) {
-      const shiftName = workTimeData.break_shift_name ? `(${workTimeData.break_shift_name})` : '';
-      const startParts = workTimeData.break_start_time?.split(':');
-      const endParts = workTimeData.break_end_time?.split(':');
+    if (effectiveWork.break_type === 'shift' || (effectiveWork.break_start_time && effectiveWork.break_end_time && effectiveWork.break_type !== 'kantor')) {
+      const shiftName = effectiveWork.break_shift_name ? `(${effectiveWork.break_shift_name})` : '';
+      const startParts = effectiveWork.break_start_time?.split(':');
+      const endParts = effectiveWork.break_end_time?.split(':');
 
       if (startParts && startParts.length >= 2 && !hasStartedBreakToday) {
         const dStart = new Date(time);
@@ -552,7 +552,7 @@ export function AttendanceScreen() {
         if (diffMinutes > 0 && diffMinutes <= 5) {
           return {
             title: `Waktu Istirahat ${diffMinutes} Menit Lagi`,
-            message: `Waktu istirahat Anda ${shiftName} dimulai pukul ${workTimeData.break_start_time?.substring(0, 5) || ''} WIB. Bersiaplah untuk istirahat.`,
+            message: `Waktu istirahat Anda ${shiftName} dimulai pukul ${effectiveWork.break_start_time?.substring(0, 5) || ''} WIB. Bersiaplah untuk istirahat.`,
             color: '#d97706',
             bgColor: '#fffbeb',
             borderColor: '#fde68a',
@@ -579,7 +579,7 @@ export function AttendanceScreen() {
         if (diffMinutes > 0 && diffMinutes <= 5) {
           return {
             title: `Istirahat Berakhir ${diffMinutes} Menit Lagi`,
-            message: `Waktu istirahat selesai pukul ${workTimeData.break_end_time?.substring(0, 5) || ''} WIB. Bersiaplah untuk masuk kembali.`,
+            message: `Waktu istirahat selesai pukul ${effectiveWork.break_end_time?.substring(0, 5) || ''} WIB. Bersiaplah untuk masuk kembali.`,
             color: '#4f46e5',
             bgColor: '#eef2ff',
             borderColor: '#c7d2fe',
@@ -600,8 +600,8 @@ export function AttendanceScreen() {
     }
 
     // 2. Skenario Kantor (Batas s/d 15:00)
-    if (workTimeData.break_type === 'kantor' || workTimeData.kantor_break_until) {
-      const untilParts = (workTimeData.kantor_break_until || '15:00').split(':');
+    if (effectiveWork.break_type === 'kantor' || effectiveWork.kantor_break_until) {
+      const untilParts = (effectiveWork.kantor_break_until || '15:00').split(':');
       if (untilParts.length >= 2) {
         const dLimit = new Date(time);
         dLimit.setHours(parseInt(untilParts[0], 10), parseInt(untilParts[1], 10), 0, 0);
@@ -631,7 +631,7 @@ export function AttendanceScreen() {
     }
 
     return null;
-  }, [workTimeData, time, hasStartedBreakToday, hasEndedBreakToday]);
+  }, [effectiveWork, time, hasStartedBreakToday, hasEndedBreakToday]);
 
   // Konfigurasi Tombol Pintar Presensi (Smart Action Button)
   const smartAction = useMemo(() => {
@@ -928,19 +928,19 @@ export function AttendanceScreen() {
         return;
       }
 
-      const isShift = workTimeData?.break_type === 'shift' || (
-        Boolean(workTimeData?.break_start_time) && 
-        Boolean(workTimeData?.break_end_time) && 
-        workTimeData?.break_type !== 'kantor'
+      const isShift = effectiveWork?.break_type === 'shift' || (
+        Boolean(effectiveWork?.break_start_time) && 
+        Boolean(effectiveWork?.break_end_time) && 
+        effectiveWork?.break_type !== 'kantor'
       );
-      const isKantor = workTimeData?.break_type === 'kantor' || (!isShift && Boolean(workTimeData?.kantor_break_until));
+      const isKantor = effectiveWork?.break_type === 'kantor' || (!isShift && Boolean(effectiveWork?.kantor_break_until));
 
       // Validasi Jadwal Shift
-      if (isShift && workTimeData?.break_start_time) {
-        const startParts = workTimeData.break_start_time.split(':');
-        const endParts = (workTimeData.break_end_time || '').split(':');
-        const startLabel = workTimeData.break_start_time.substring(0, 5);
-        const endLabel = workTimeData.break_end_time ? workTimeData.break_end_time.substring(0, 5) : '';
+      if (isShift && effectiveWork?.break_start_time) {
+        const startParts = effectiveWork.break_start_time.split(':');
+        const endParts = (effectiveWork.break_end_time || '').split(':');
+        const startLabel = effectiveWork.break_start_time.substring(0, 5);
+        const endLabel = effectiveWork.break_end_time ? effectiveWork.break_end_time.substring(0, 5) : '';
 
         // 1. Sebelum rentang shift
         if (startParts.length >= 2) {
@@ -974,7 +974,7 @@ export function AttendanceScreen() {
 
       // Validasi Kantor (Maksimal s/d 15:00)
       if (isKantor) {
-        const kantorUntil = workTimeData?.kantor_break_until ? workTimeData.kantor_break_until.substring(0, 5) : '15:00';
+        const kantorUntil = effectiveWork?.kantor_break_until ? effectiveWork.kantor_break_until.substring(0, 5) : '15:00';
         const untilParts = kantorUntil.split(':');
         if (untilParts.length >= 2) {
           const dLimit = new Date();
