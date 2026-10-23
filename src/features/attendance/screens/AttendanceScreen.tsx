@@ -448,17 +448,21 @@ export function AttendanceScreen() {
   // Jadwal Jam Istirahat Kantor / Shift
   const breakScheduleText = useMemo(() => {
     if (effectiveWork?.is_closed_today) {
-      return 'Libur';
+      return 'Libur Hari Ini';
+    }
+
+    // 0. Istirahat Serentak (Jumat / Simultaneous Break)
+    if (effectiveWork?.has_simultaneous_break) {
+      const s = effectiveWork.simultaneous_break_start ? effectiveWork.simultaneous_break_start.substring(0, 5) : '11:30';
+      const e = effectiveWork.simultaneous_break_end ? effectiveWork.simultaneous_break_end.substring(0, 5) : '13:30';
+      return `${s} - ${e} WIB`;
     }
 
     // 1. Tipe Shift atau Berjadwal: Memiliki shift_name atau jam mulai & selesai
     if (effectiveWork?.break_type === 'shift' || (effectiveWork?.break_start_time && effectiveWork?.break_end_time && effectiveWork?.break_type !== 'kantor')) {
       const start = effectiveWork?.break_start_time ? effectiveWork.break_start_time.substring(0, 5) : '--:--';
       const end = effectiveWork?.break_end_time ? effectiveWork.break_end_time.substring(0, 5) : '--:--';
-      if (effectiveWork?.break_shift_name) {
-        return `${effectiveWork.break_shift_name} (${start} - ${end})`;
-      }
-      return `${start} - ${end}`;
+      return `${start} - ${end} WIB`;
     }
 
     // 2. Tipe Kantor: Fleksibel dengan batas waktu tertentu (kantor_break_until)
@@ -466,13 +470,14 @@ export function AttendanceScreen() {
       const until = effectiveWork?.kantor_break_until
         ? effectiveWork.kantor_break_until.substring(0, 5)
         : '15:00';
-      return `Batas s/d ${until}`;
+      return `Batas s/d ${until} WIB`;
     }
 
     if (effectiveWork?.break_end_time) {
-      return `s/d ${effectiveWork.break_end_time.substring(0, 5)}`;
+      return `Batas s/d ${effectiveWork.break_end_time.substring(0, 5)} WIB`;
     }
 
+    return 'Sesuai Jam Kantor';
   }, [effectiveWork]);
 
   // Kalkulasi jarak real-time dari posisi GPS ke titik Cabang (jika koordinat cabang valid)
@@ -751,7 +756,7 @@ export function AttendanceScreen() {
       // JIKA WAKTU ISTIRAHAT BELUM LEWAT:
       // Tampilkan tombol Mulai Istirahat (Aktif jika dalam rentang, atau Terkunci jika belum jamnya)
       if (!isBreakExpired) {
-        let sub = `Jadwal Istirahat: ${breakScheduleText} WIB`;
+        let sub = `Jadwal Istirahat: ${breakScheduleText}`;
         if (isShift) {
           if (!isBreakUnlocked) {
             sub = `Belum Waktu Istirahat • Jadwal: ${shiftBreakStartLabel} WIB (Buka -5 mnt)`;
@@ -1396,21 +1401,74 @@ export function AttendanceScreen() {
               </View>
             </View>
 
-            {/* STRIP JADWAL ISTIRAHAT KANTOR CABANG */}
-            <View style={styles.breakScheduleRow}>
-              <View style={styles.breakScheduleIconWrap}>
-                <MaterialIcons name="free-breakfast" size={15} color="#d97706" />
+            {/* KARTU JADWAL & STATUS ISTIRAHAT */}
+            <View style={styles.breakScheduleCard}>
+              <View style={styles.breakScheduleLeft}>
+                <View style={styles.breakScheduleIconWrap}>
+                  <MaterialIcons name="free-breakfast" size={17} color="#d97706" />
+                </View>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.breakScheduleTitle}>
+                      {effectiveWork?.has_simultaneous_break
+                        ? 'Istirahat Jumat'
+                        : effectiveWork?.break_type === 'shift'
+                          ? (effectiveWork?.break_shift_name ? `Istirahat (${effectiveWork.break_shift_name})` : 'Istirahat Shift')
+                          : effectiveWork?.break_type === 'kantor'
+                            ? 'Istirahat Kantor'
+                            : 'Jadwal Istirahat'}
+                    </Text>
+                    <View style={styles.breakBadgeTag}>
+                      <Text style={styles.breakBadgeTagText}>
+                        {effectiveWork?.has_simultaneous_break ? 'Jumat' : effectiveWork?.break_type === 'kantor' ? 'Fleksibel' : 'Shift'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.breakScheduleTimeText}>{breakScheduleText}</Text>
+                </View>
               </View>
-              <Text style={styles.breakScheduleLabel}>
-                {effectiveWork?.has_simultaneous_break
-                  ? 'Istirahat Jumat:'
-                  : effectiveWork?.break_type === 'shift'
-                    ? 'Istirahat Shift:'
-                    : effectiveWork?.break_type === 'kantor'
-                      ? 'Istirahat Kantor:'
-                      : 'Jadwal Istirahat:'}
-              </Text>
-              <Text style={styles.breakScheduleValue}>{breakScheduleText} WIB</Text>
+
+              {/* Status Absensi Istirahat Karyawan */}
+              <View style={styles.breakStatusRight}>
+                <View style={[
+                  styles.breakStatusBadge,
+                  todayRecord?.break_end
+                    ? { backgroundColor: '#dcfce7' }
+                    : todayRecord?.break_start
+                      ? { backgroundColor: '#fef3c7' }
+                      : { backgroundColor: '#f1f5f9' }
+                ]}>
+                  <View style={[
+                    styles.breakStatusDot,
+                    todayRecord?.break_end
+                      ? { backgroundColor: '#16a34a' }
+                      : todayRecord?.break_start
+                        ? { backgroundColor: '#d97706' }
+                        : { backgroundColor: '#94a3b8' }
+                  ]} />
+                  <Text style={[
+                    styles.breakStatusBadgeText,
+                    todayRecord?.break_end
+                      ? { color: '#166534' }
+                      : todayRecord?.break_start
+                        ? { color: '#92400e' }
+                        : { color: '#64748b' }
+                  ]}>
+                    {todayRecord?.break_end
+                      ? 'Selesai'
+                      : todayRecord?.break_start
+                        ? 'Rehat'
+                        : 'Belum'}
+                  </Text>
+                </View>
+
+                {todayRecord?.break_start ? (
+                  <Text style={styles.breakRecordedTimeText}>
+                    {todayRecord.break_start.substring(0, 5)}
+                    {todayRecord.break_end ? ` - ${todayRecord.break_end.substring(0, 5)}` : ''} WIB
+                  </Text>
+                ) : null}
+              </View>
             </View>
           </View>
         </View>
@@ -1424,10 +1482,10 @@ export function AttendanceScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.activeBreakTitle}>Sedang Waktu Istirahat</Text>
               <Text style={styles.activeBreakDesc}>
-                {workTimeData?.break_type === 'shift'
-                  ? `Mulai istirahat pukul ${todayBreakStart} WIB (Jadwal: ${breakScheduleText} WIB). Tekan 'Selesai Istirahat' jika Anda telah kembali ke area kantor.`
-                  : workTimeData?.break_type === 'kantor'
-                    ? `Mulai istirahat pukul ${todayBreakStart} WIB (Batas s/d ${workTimeData?.kantor_break_until ? workTimeData.kantor_break_until.substring(0, 5) : '15:00'} WIB). Tekan 'Selesai Istirahat' jika Anda telah kembali bekerja.`
+                {effectiveWork?.break_type === 'shift'
+                  ? `Mulai istirahat pukul ${todayBreakStart} WIB (Jadwal: ${breakScheduleText}). Tekan 'Selesai Istirahat' jika Anda telah kembali ke area kantor.`
+                  : effectiveWork?.break_type === 'kantor'
+                    ? `Mulai istirahat pukul ${todayBreakStart} WIB (Batas s/d ${effectiveWork?.kantor_break_until ? effectiveWork.kantor_break_until.substring(0, 5) : '15:00'} WIB). Tekan 'Selesai Istirahat' jika Anda telah kembali bekerja.`
                     : `Mulai istirahat pukul ${todayBreakStart} WIB. Tekan 'Selesai Istirahat' jika Anda telah kembali ke area kantor dan siap bekerja.`}
               </Text>
             </View>
@@ -1889,39 +1947,83 @@ const styles = StyleSheet.create({
     backgroundColor: '#f1f5f9'
   },
 
-  breakScheduleRow: {
+  breakScheduleCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#fffbeb',
     borderWidth: 1,
     borderColor: '#fde68a',
-    borderRadius: 10,
-    paddingVertical: 8,
+    borderRadius: 12,
+    paddingVertical: 10,
     paddingHorizontal: 12,
-    marginTop: 10
+    marginTop: 12,
+  },
+  breakScheduleLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   breakScheduleIconWrap: {
-    marginRight: 8
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#fef3c7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
-  breakScheduleLabel: {
-    fontSize: 12,
+  breakScheduleTitle: {
+    fontSize: 13,
+    fontWeight: '700',
     color: '#92400e',
-    fontWeight: '500',
-    marginRight: 6
   },
-  breakScheduleValue: {
-    fontSize: 12,
+  breakBadgeTag: {
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    borderWidth: 0.5,
+    borderColor: '#fcd34d',
+  },
+  breakBadgeTagText: {
+    fontSize: 9,
     fontWeight: 'bold',
-    color: '#78350f'
+    color: '#b45309',
+    textTransform: 'uppercase',
   },
-  scheduleBreakBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6
+  breakScheduleTimeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#78350f',
+    marginTop: 2,
   },
-  scheduleBreakBadgeText: {
-    fontSize: 10,
-    fontWeight: 'bold'
+  breakStatusRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  breakStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 12,
+    gap: 4,
+  },
+  breakStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  breakStatusBadgeText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  breakRecordedTimeText: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: '#78350f',
+    marginTop: 3,
   },
 
   activeBreakBanner: {
