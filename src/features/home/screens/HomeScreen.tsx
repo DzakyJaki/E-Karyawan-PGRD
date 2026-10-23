@@ -74,7 +74,14 @@ export function HomeScreen() {
 
       // 1. Fetch Profile (/api/my/profile)
       const profilePromise = fetch(`${apiUrl}/api/my/profile`, { headers })
-        .then(res => res.ok ? res.json() : null)
+        .then(async res => {
+          if (res.status === 401) {
+            await AsyncStorage.multiRemove(['userToken', 'userData', 'fullProfile']);
+            router.replace('/login');
+            return null;
+          }
+          return res.ok ? res.json() : null;
+        })
         .catch(() => null);
 
       // 2. Fetch Presensi Bulan Ini (/api/my/presensi)
@@ -118,9 +125,10 @@ export function HomeScreen() {
       }
 
       // Handle Presensi Hari Ini & Total Bulan Ini
+      const effectiveToday = workTimeJson?.data?.today || todayYMD;
       let currentTodayRec: TodayAttendance | null = null;
       if (presJson && Array.isArray(presJson.data)) {
-        currentTodayRec = presJson.data.find((item: any) => item.date === todayYMD) || null;
+        currentTodayRec = presJson.data.find((item: any) => item.date === effectiveToday) || null;
         setTodayAttendance(currentTodayRec);
         setAttendanceCount(presJson.data.length);
       } else {

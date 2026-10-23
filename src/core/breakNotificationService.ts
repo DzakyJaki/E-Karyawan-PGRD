@@ -2,6 +2,7 @@ import { Platform, Vibration } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
+import { getLocalDateString } from './timeUtils';
 
 // Kunci penyimpanan
 const BREAK_NOTIF_IDS_KEY = '@scheduled_break_notif_ids_v4';
@@ -422,7 +423,7 @@ async function checkAndTriggerActiveReminders() {
     }
 
     const now = new Date();
-    const todayStr = cachedWorkTimeData.today || now.toISOString().split('T')[0];
+    const todayStr = cachedWorkTimeData.today || getLocalDateString(now);
 
     // Pembersihan otomatis: Hapus cache flag notifikasi dari hari-hari sebelumnya agar tidak menumpuk
     try {
@@ -607,7 +608,7 @@ export async function scheduleBreakReminders(
       return;
     }
 
-    const todayStr = workTimeData.today || new Date().toISOString().split('T')[0];
+    const todayStr = workTimeData.today || getLocalDateString(new Date());
     const fingerprint = `${todayStr}_${workTimeData.break_type}_${workTimeData.break_start_time}_${workTimeData.break_end_time}_${todayAttendance?.break_start || ''}_${todayAttendance?.break_end || ''}`;
     const nowMs = Date.now();
 

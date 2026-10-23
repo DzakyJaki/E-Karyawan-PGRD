@@ -40,6 +40,17 @@ export function normalizeTimeString(timeStr?: string | null, startStr?: string |
 }
 
 /**
+ * Mendapatkan string tanggal lokal (YYYY-MM-DD) berdasarkan zona waktu perangkat lokal.
+ * Mencegah pergeseran tanggal ke kemarin saat jam subuh (00:00 - 06:59 WIB) yang terjadi jika memakai toISOString().
+ */
+export function getLocalDateString(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
  * Mendapatkan konfigurasi jadwal kerja aktif hari ini berdasarkan array schedules dan hari saat ini (0 = Minggu ... 6 = Sabtu).
  * Jika ada pengaturan harian spesifik (misal hari Jumat / day_of_week: 5), jadwal hari tersebut yang diutamakan.
  */

@@ -411,11 +411,12 @@ export function AttendanceScreen() {
 
   // Cari data presensi hari ini
   const todayStr = useMemo(() => {
+    if (workTimeData?.today) return workTimeData.today;
     const y = time.getFullYear();
     const m = (time.getMonth() + 1).toString().padStart(2, '0');
     const d = time.getDate().toString().padStart(2, '0');
     return `${y}-${m}-${d}`;
-  }, [time]);
+  }, [workTimeData?.today, time]);
 
   const todayRecord = useMemo(() => {
     return history.find(item => item.date === todayStr);
@@ -1159,6 +1160,17 @@ export function AttendanceScreen() {
       });
 
       const json = await response.json().catch(() => ({}));
+
+      if (response.status === 401) {
+        showToast({
+          title: 'Sesi Berakhir',
+          message: 'Sesi login Anda telah berakhir. Silakan login kembali.',
+          type: 'warning'
+        });
+        await AsyncStorage.multiRemove(['userToken', 'userData', 'fullProfile']);
+        router.replace('/login');
+        return;
+      }
 
       if (response.ok) {
         showToast({
