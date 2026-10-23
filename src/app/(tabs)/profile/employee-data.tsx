@@ -121,6 +121,12 @@ export default function EmployeeDataScreen() {
     : '';
 
   const deductions = Array.isArray(employee?.deduction_types) ? employee.deduction_types : [];
+  const allowances = deductions.filter(
+    (item) => item.type?.toLowerCase() === 'tunjangan' || (!item.type && item.name?.toLowerCase().includes('tunjangan'))
+  );
+  const deductionItems = deductions.filter(
+    (item) => !(item.type?.toLowerCase() === 'tunjangan' || (!item.type && item.name?.toLowerCase().includes('tunjangan')))
+  );
 
   const statusRaw = employee?.status as any;
   const displayStatus = typeof statusRaw === 'object' && statusRaw !== null
@@ -226,23 +232,50 @@ export default function EmployeeDataScreen() {
                   <InfoRow icon="apartment" label="Departemen" value={displayDepartment} />
                 ) : null}
 
-                {/* DAFTAR POTONGAN GAJI (DEDUCTION TYPES) DARI DATABASE */}
+                {/* DAFTAR TUNJANGAN & POTONGAN GAJI (DEDUCTION TYPES) DARI DATABASE */}
                 <View style={styles.deductionSection}>
                   <View style={styles.deductionHeader}>
-                    <MaterialIcons name="receipt-long" size={18} color={theme.colors.danger} />
-                    <Text style={styles.deductionSectionTitle}>Daftar Potongan Gaji Terdaftar</Text>
+                    <MaterialIcons name="account-balance-wallet" size={18} color={theme.colors.primary} />
+                    <Text style={styles.deductionSectionTitle}>Daftar Tunjangan & Potongan Gaji</Text>
                   </View>
                   {deductions.length > 0 ? (
-                    <View style={styles.deductionList}>
-                      {deductions.map((item, idx) => (
-                        <View key={item.id || idx} style={styles.deductionBadge}>
-                          <MaterialIcons name="remove-circle-outline" size={14} color="#dc2626" />
-                          <Text style={styles.deductionBadgeText}>{item.name}</Text>
+                    <View style={{ gap: 12 }}>
+                      {allowances.length > 0 && (
+                        <View style={styles.subGroupContainer}>
+                          <View style={styles.subGroupHeader}>
+                            <View style={[styles.dotIndicator, { backgroundColor: '#10b981' }]} />
+                            <Text style={styles.subGroupTitle}>Tunjangan ({allowances.length})</Text>
+                          </View>
+                          <View style={styles.deductionList}>
+                            {allowances.map((item, idx) => (
+                              <View key={`allowance-${item.id || idx}`} style={[styles.chipBadge, styles.allowanceBadge]}>
+                                <MaterialIcons name="add-circle-outline" size={14} color="#059669" />
+                                <Text style={styles.allowanceBadgeText}>{item.name}</Text>
+                              </View>
+                            ))}
+                          </View>
                         </View>
-                      ))}
+                      )}
+
+                      {deductionItems.length > 0 && (
+                        <View style={styles.subGroupContainer}>
+                          <View style={styles.subGroupHeader}>
+                            <View style={[styles.dotIndicator, { backgroundColor: '#ef4444' }]} />
+                            <Text style={styles.subGroupTitle}>Potongan Gaji ({deductionItems.length})</Text>
+                          </View>
+                          <View style={styles.deductionList}>
+                            {deductionItems.map((item, idx) => (
+                              <View key={`deduction-${item.id || idx}`} style={[styles.chipBadge, styles.deductionBadge]}>
+                                <MaterialIcons name="remove-circle-outline" size={14} color="#dc2626" />
+                                <Text style={styles.deductionBadgeText}>{item.name}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        </View>
+                      )}
                     </View>
                   ) : (
-                    <Text style={styles.emptyDeductionText}>Tidak ada potongan khusus terdaftar</Text>
+                    <Text style={styles.emptyDeductionText}>Tidak ada tunjangan atau potongan terdaftar</Text>
                   )}
                 </View>
               </View>
@@ -311,7 +344,7 @@ const styles = StyleSheet.create({
   btnRequest: { flexDirection: 'row', backgroundColor: theme.colors.primary, padding: 18, borderRadius: theme.radius.m, alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: theme.colors.primary, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   btnRequestText: { color: '#fff', fontWeight: 'bold', marginLeft: 8, fontSize: 16 },
 
-  // Deduction Types Styles
+  // Deduction & Allowance Styles
   deductionSection: {
     paddingTop: 16,
     paddingHorizontal: 12,
@@ -320,38 +353,70 @@ const styles = StyleSheet.create({
   deductionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
-    gap: 6
+    marginBottom: 12,
+    gap: 8,
   },
   deductionSectionTitle: {
     fontSize: 13,
     fontWeight: 'bold',
-    color: theme.colors.text
+    color: theme.colors.text,
+  },
+  subGroupContainer: {
+    marginBottom: 4,
+  },
+  subGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    gap: 6,
+  },
+  dotIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  subGroupTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   deductionList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8
+    gap: 8,
   },
-  deductionBadge: {
+  chipBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fef2f2',
-    borderWidth: 1,
-    borderColor: '#fecaca',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    gap: 6
+    borderWidth: 1,
+    gap: 6,
+  },
+  allowanceBadge: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#a7f3d0',
+  },
+  allowanceBadgeText: {
+    fontSize: 12,
+    color: '#065f46',
+    fontWeight: '600',
+  },
+  deductionBadge: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
   },
   deductionBadgeText: {
     fontSize: 12,
     color: '#991b1b',
-    fontWeight: '500'
+    fontWeight: '500',
   },
   emptyDeductionText: {
     fontSize: 12,
     color: theme.colors.textMuted,
-    fontStyle: 'italic'
+    fontStyle: 'italic',
   }
 });
