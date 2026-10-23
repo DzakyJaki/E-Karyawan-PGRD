@@ -282,10 +282,18 @@ export default function EmployeeDataScreen() {
             )}
           </View>
 
-          <TouchableOpacity style={styles.btnRequest} activeOpacity={0.8}>
-            <MaterialIcons name="support-agent" size={20} color="#fff" />
-            <Text style={styles.btnRequestText}>Hubungi HRD (Perubahan Data)</Text>
-          </TouchableOpacity>
+          {/* Card Info Perubahan Data */}
+          <View style={styles.infoNoticeCard}>
+            <View style={styles.infoNoticeIconBox}>
+              <MaterialIcons name="support-agent" size={20} color={theme.colors.primary} />
+            </View>
+            <View style={styles.infoNoticeContent}>
+              <Text style={styles.infoNoticeTitle}>Perubahan Data Karyawan</Text>
+              <Text style={styles.infoNoticeText}>
+                Jika terdapat kesalahan data atau ingin mengajukan perubahan informasi kepegawaian, silakan hubungi bagian HRD.
+              </Text>
+            </View>
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -341,8 +349,41 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: 12, color: theme.colors.textMuted, marginBottom: 4 },
   infoValue: { fontSize: 15, fontWeight: '600', color: theme.colors.text },
   
-  btnRequest: { flexDirection: 'row', backgroundColor: theme.colors.primary, padding: 18, borderRadius: theme.radius.m, alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: theme.colors.primary, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
-  btnRequestText: { color: '#fff', fontWeight: 'bold', marginLeft: 8, fontSize: 16 },
+  // Info Notice Card Styles
+  infoNoticeCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+    borderRadius: theme.radius.m,
+    padding: 14,
+    marginBottom: theme.spacing.xl,
+    gap: 12,
+  },
+  infoNoticeIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#dbeafe',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  infoNoticeContent: {
+    flex: 1,
+  },
+  infoNoticeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1e40af',
+    marginBottom: 3,
+  },
+  infoNoticeText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#475569',
+  },
 
   // Deduction & Allowance Styles
   deductionSection: {
