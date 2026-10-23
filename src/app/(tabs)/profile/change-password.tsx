@@ -24,7 +24,17 @@ export default function ChangePasswordScreen() {
     passwordConfirmation?: string;
   }>({});
 
+  const isFormFilled = Boolean(
+    currentPassword.trim() &&
+    newPassword.trim() &&
+    passwordConfirmation.trim()
+  );
+  const isMinLengthValid = newPassword.length >= 5;
+  const isMatch = newPassword === passwordConfirmation && passwordConfirmation.length > 0;
+  const isSubmitDisabled = !isFormFilled || !isMinLengthValid || !isMatch || loading;
+
   const handleSave = async () => {
+    if (isSubmitDisabled) return;
     const errors: {
       currentPassword?: string;
       newPassword?: string;
@@ -206,6 +216,11 @@ export default function ChangePasswordScreen() {
               <MaterialIcons name="error-outline" size={14} color={theme.colors.danger} />
               <Text style={styles.inlineErrorText}>{formErrors.newPassword}</Text>
             </View>
+          ) : newPassword.length > 0 && newPassword.length < 5 ? (
+            <View style={styles.inlineFeedbackRow}>
+              <MaterialIcons name="info-outline" size={14} color="#b45309" />
+              <Text style={[styles.inlineFeedbackText, { color: "#b45309" }]}>Password baru minimal 5 karakter</Text>
+            </View>
           ) : null}
         </View>
 
@@ -215,8 +230,26 @@ export default function ChangePasswordScreen() {
             <Text style={styles.label}>Konfirmasi Password Baru</Text>
             <Text style={styles.requiredBadge}>*Wajib</Text>
           </View>
-          <View style={[styles.inputWrapper, formErrors.passwordConfirmation && styles.inputWrapperError]}>
-            <MaterialIcons name="verified-user" size={20} color={formErrors.passwordConfirmation ? theme.colors.danger : theme.colors.textMuted} style={styles.inputIcon} />
+          <View style={[
+            styles.inputWrapper,
+            formErrors.passwordConfirmation 
+              ? styles.inputWrapperError 
+              : passwordConfirmation.length > 0
+                ? isMatch ? styles.inputWrapperSuccess : styles.inputWrapperError
+                : null
+          ]}>
+            <MaterialIcons 
+              name="verified-user" 
+              size={20} 
+              color={
+                formErrors.passwordConfirmation || (passwordConfirmation.length > 0 && !isMatch)
+                  ? theme.colors.danger
+                  : passwordConfirmation.length > 0 && isMatch
+                    ? '#059669'
+                    : theme.colors.textMuted
+              } 
+              style={styles.inputIcon} 
+            />
             <TextInput
               style={styles.input}
               secureTextEntry={!showConfirmPass}
@@ -237,20 +270,36 @@ export default function ChangePasswordScreen() {
               <MaterialIcons name="error-outline" size={14} color={theme.colors.danger} />
               <Text style={styles.inlineErrorText}>{formErrors.passwordConfirmation}</Text>
             </View>
+          ) : passwordConfirmation.length > 0 ? (
+            <View style={styles.inlineFeedbackRow}>
+              <MaterialIcons 
+                name={isMatch ? "check-circle" : "cancel"} 
+                size={14} 
+                color={isMatch ? "#059669" : theme.colors.danger} 
+              />
+              <Text style={[styles.inlineFeedbackText, { color: isMatch ? "#059669" : theme.colors.danger }]}>
+                {isMatch ? "Konfirmasi password sesuai" : "Konfirmasi password belum cocok"}
+              </Text>
+            </View>
           ) : null}
         </View>
 
         {/* TOMBOL SIMPAN */}
         <TouchableOpacity
-          style={[styles.btnSave, loading && { opacity: 0.7 }]}
+          style={[
+            styles.btnSave,
+            isSubmitDisabled && styles.btnSaveDisabled
+          ]}
           onPress={handleSave}
-          disabled={loading}
+          disabled={isSubmitDisabled}
           activeOpacity={0.8}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.btnSaveText}>Simpan Password Baru</Text>
+            <Text style={[styles.btnSaveText, isSubmitDisabled && styles.btnSaveTextDisabled]}>
+              Simpan Password Baru
+            </Text>
           )}
         </TouchableOpacity>
       </ScrollView>
@@ -278,5 +327,30 @@ const styles = StyleSheet.create({
   eyeBtn: { padding: 6 },
 
   btnSave: { backgroundColor: theme.colors.primary, width: '100%', paddingVertical: 14, borderRadius: theme.radius.m, alignItems: 'center', marginTop: 12, elevation: 2, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5 },
-  btnSaveText: { color: '#fff', fontWeight: 'bold', fontSize: 15 }
+  btnSaveDisabled: {
+    backgroundColor: '#cbd5e1',
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  btnSaveText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+  btnSaveTextDisabled: {
+    color: '#64748b',
+  },
+  inputWrapperSuccess: {
+    borderColor: '#10b981',
+    borderWidth: 1.5,
+    backgroundColor: '#f0fdf4',
+  },
+  inlineFeedbackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    paddingHorizontal: 2,
+    gap: 4,
+  },
+  inlineFeedbackText: {
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+  }
 });
