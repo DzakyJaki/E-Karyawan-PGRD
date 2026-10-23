@@ -1403,33 +1403,24 @@ export function AttendanceScreen() {
 
             {/* KARTU JADWAL & STATUS ISTIRAHAT */}
             <View style={styles.breakScheduleCard}>
-              <View style={styles.breakScheduleLeft}>
-                <View style={styles.breakScheduleIconWrap}>
-                  <MaterialIcons name="free-breakfast" size={17} color="#d97706" />
-                </View>
-                <View style={{ flex: 1, paddingRight: 8 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={styles.breakScheduleTitle}>
-                      {effectiveWork?.has_simultaneous_break
-                        ? 'Istirahat Jumat'
-                        : effectiveWork?.break_type === 'shift'
-                          ? (effectiveWork?.break_shift_name ? `Istirahat (${effectiveWork.break_shift_name})` : 'Istirahat Shift')
-                          : effectiveWork?.break_type === 'kantor'
-                            ? 'Istirahat Kantor'
-                            : 'Jadwal Istirahat'}
-                    </Text>
-                    <View style={styles.breakBadgeTag}>
-                      <Text style={styles.breakBadgeTagText}>
-                        {effectiveWork?.has_simultaneous_break ? 'Jumat' : effectiveWork?.break_type === 'kantor' ? 'Fleksibel' : 'Shift'}
-                      </Text>
-                    </View>
+              {/* BARIS ATAS: JUDUL HARI JUMAT / ISTIRAHAT SEJAJAR DENGAN KETERANGAN STATUS (BELUM / REHAT / SELESAI) */}
+              <View style={styles.breakCardTopRow}>
+                <View style={styles.breakCardTitleWrap}>
+                  <View style={styles.breakScheduleIconWrap}>
+                    <MaterialIcons name="free-breakfast" size={16} color="#d97706" />
                   </View>
-                  <Text style={styles.breakScheduleTimeText}>{breakScheduleText}</Text>
+                  <Text style={styles.breakScheduleTitle}>
+                    {effectiveWork?.has_simultaneous_break
+                      ? 'Istirahat Hari Jumat'
+                      : effectiveWork?.break_type === 'shift'
+                        ? (effectiveWork?.break_shift_name ? `Istirahat ${effectiveWork.break_shift_name}` : 'Istirahat Shift')
+                        : effectiveWork?.break_type === 'kantor'
+                          ? 'Istirahat Kantor'
+                          : 'Jadwal Istirahat'}
+                  </Text>
                 </View>
-              </View>
 
-              {/* Status Absensi Istirahat Karyawan */}
-              <View style={styles.breakStatusRight}>
+                {/* Status Absensi Istirahat Karyawan (Sejajar di baris atas) */}
                 <View style={[
                   styles.breakStatusBadge,
                   todayRecord?.break_end
@@ -1461,13 +1452,28 @@ export function AttendanceScreen() {
                         : 'Belum'}
                   </Text>
                 </View>
+              </View>
 
-                {todayRecord?.break_start ? (
-                  <Text style={styles.breakRecordedTimeText}>
-                    {todayRecord.break_start.substring(0, 5)}
-                    {todayRecord.break_end ? ` - ${todayRecord.break_end.substring(0, 5)}` : ''} WIB
+              {/* BARIS BAWAH: WAKTU JADWAL & STATUS ABSEN HARI INI */}
+              <View style={styles.breakCardBottomRow}>
+                <View style={styles.breakTimeCol}>
+                  <Text style={styles.breakTimeLabel}>Jadwal Istirahat</Text>
+                  <Text style={styles.breakScheduleTimeText}>{breakScheduleText}</Text>
+                </View>
+
+                <View style={styles.breakTimeDivider} />
+
+                <View style={[styles.breakTimeCol, { alignItems: 'flex-end' }]}>
+                  <Text style={styles.breakTimeLabel}>Presensi Hari Ini</Text>
+                  <Text style={[
+                    styles.breakRecordedTimeText,
+                    !todayRecord?.break_start && { color: theme.colors.textMuted, fontStyle: 'italic', fontWeight: '500' }
+                  ]}>
+                    {todayRecord?.break_start 
+                      ? `${todayRecord.break_start.substring(0, 5)}${todayRecord.break_end ? ` - ${todayRecord.break_end.substring(0, 5)}` : ' (Rehat)'} WIB`
+                      : 'Belum Presensi'}
                   </Text>
-                ) : null}
+                </View>
               </View>
             </View>
           </View>
@@ -1948,59 +1954,40 @@ const styles = StyleSheet.create({
   },
 
   breakScheduleCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: '#fffbeb',
     borderWidth: 1,
     borderColor: '#fde68a',
     borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    padding: 12,
     marginTop: 12,
   },
-  breakScheduleLeft: {
-    flex: 1,
+  breakCardTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: '#fef3c7',
+  },
+  breakCardTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
   },
   breakScheduleIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: '#fef3c7',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginRight: 8,
   },
   breakScheduleTitle: {
     fontSize: 13,
     fontWeight: '700',
     color: '#92400e',
-  },
-  breakBadgeTag: {
-    backgroundColor: '#fef3c7',
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 4,
-    borderWidth: 0.5,
-    borderColor: '#fcd34d',
-  },
-  breakBadgeTagText: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    color: '#b45309',
-    textTransform: 'uppercase',
-  },
-  breakScheduleTimeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#78350f',
-    marginTop: 2,
-  },
-  breakStatusRight: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
   },
   breakStatusBadge: {
     flexDirection: 'row',
@@ -2017,13 +2004,40 @@ const styles = StyleSheet.create({
   },
   breakStatusBadgeText: {
     fontSize: 11,
-    fontWeight: 'bold',
+    fontWeight: '700',
+  },
+  breakCardBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 9,
+  },
+  breakTimeCol: {
+    flex: 1,
+  },
+  breakTimeLabel: {
+    fontSize: 10.5,
+    color: '#b45309',
+    fontWeight: '600',
+    marginBottom: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  breakScheduleTimeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#78350f',
+  },
+  breakTimeDivider: {
+    width: 1,
+    height: 26,
+    backgroundColor: '#fde68a',
+    marginHorizontal: 10,
   },
   breakRecordedTimeText: {
-    fontSize: 10.5,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
     color: '#78350f',
-    marginTop: 3,
   },
 
   activeBreakBanner: {
