@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import NetInfo from '@react-native-community/netinfo';
 import { useToast } from '../core/ToastContext';
 

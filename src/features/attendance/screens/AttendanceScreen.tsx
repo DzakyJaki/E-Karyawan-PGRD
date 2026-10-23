@@ -165,7 +165,7 @@ export function AttendanceScreen() {
         if (cachedWt) {
           setWorkTimeData(JSON.parse(cachedWt));
         }
-      } catch (_) {}
+      } catch {}
     };
     loadCache();
   }, []);
@@ -855,7 +855,7 @@ export function AttendanceScreen() {
     isEndTimeReached,
     workEndLabel,
     todayRecord,
-    workTimeData,
+    effectiveWork,
     time
   ]);
 
@@ -1186,7 +1186,7 @@ export function AttendanceScreen() {
           type: 'error'
         });
       }
-    } catch (err) {
+    } catch {
       showToast({
         title: 'Error Koneksi',
         message: 'Gagal terhubung ke server. Periksa koneksi internet Anda.',

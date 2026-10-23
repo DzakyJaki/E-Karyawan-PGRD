@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Modal, TextInput } from 'react-native';
 import { theme } from '../../../core/theme';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -43,7 +43,7 @@ interface SlipGajiSummary {
   };
 }
 
-interface SlipGajiDetail extends SlipGajiSummary {}
+type SlipGajiDetail = SlipGajiSummary;
 
 const MONTH_NAMES = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -56,6 +56,11 @@ export default function SalaryScreen() {
 
   // Auth / Security States
   const [isUnlocked, setIsUnlocked] = useState(false);
+  const isUnlockedRef = useRef(isUnlocked);
+  useEffect(() => {
+    isUnlockedRef.current = isUnlocked;
+  }, [isUnlocked]);
+
   const [pin, setPin] = useState('');
   const [hasBiometrics, setHasBiometrics] = useState(false);
   const [savedPin, setSavedPin] = useState<string | null>(null);
@@ -115,7 +120,7 @@ export default function SalaryScreen() {
           setHasBiometrics(canBio);
 
           // Panggil sidik jari otomatis HANYA jika pengguna sedang fokus di layar Slip Gaji dan belum terbuka
-          if (canBio && !isUnlocked) {
+          if (canBio && !isUnlockedRef.current) {
             timer = setTimeout(async () => {
               if (!isFocused) return;
               try {
@@ -237,6 +242,39 @@ export default function SalaryScreen() {
     setPin(prev => prev.slice(0, -1));
   };
 
+  // Fetch Detail Slip Gaji by ID
+  const fetchSlipDetail = useCallback(async (slipGajiId: number, fallbackList?: SlipGajiSummary[]) => {
+    try {
+      setDetailLoading(true);
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://dieselmart.pagaruyungdiesel.cloud';
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) return;
+
+      const response = await fetch(`${apiUrl}/api/my/slip-gaji/${slipGajiId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const json = await response.json();
+        setSelectedSlipDetail(json);
+      } else {
+        // Fallback ke data list jika detail gagal
+        const list = fallbackList || slipList;
+        const fallback = list.find(s => s.id === slipGajiId);
+        if (fallback) setSelectedSlipDetail(fallback);
+      }
+    } catch {
+      const list = fallbackList || slipList;
+      const fallback = list.find(s => s.id === slipGajiId);
+      if (fallback) setSelectedSlipDetail(fallback);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [slipList]);
+
   // Fetch List Slip Gaji
   const fetchSlipGajiList = useCallback(async () => {
     try {
@@ -269,7 +307,7 @@ export default function SalaryScreen() {
         setSlipList(list);
 
         if (list.length > 0) {
-          fetchSlipDetail(list[0].id);
+          fetchSlipDetail(list[0].id, list);
         }
       } else {
         console.log('Gagal fetch slip gaji, HTTP status:', response.status);
@@ -281,38 +319,7 @@ export default function SalaryScreen() {
     } finally {
       setLoading(false);
     }
-  }, [router]);
-
-  // Fetch Detail Slip Gaji by ID
-  const fetchSlipDetail = async (slipGajiId: number) => {
-    try {
-      setDetailLoading(true);
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://dieselmart.pagaruyungdiesel.cloud';
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) return;
-
-      const response = await fetch(`${apiUrl}/api/my/slip-gaji/${slipGajiId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const json = await response.json();
-        setSelectedSlipDetail(json);
-      } else {
-        // Fallback ke data list jika detail gagal
-        const fallback = slipList.find(s => s.id === slipGajiId);
-        if (fallback) setSelectedSlipDetail(fallback);
-      }
-    } catch (error) {
-      const fallback = slipList.find(s => s.id === slipGajiId);
-      if (fallback) setSelectedSlipDetail(fallback);
-    } finally {
-      setDetailLoading(false);
-    }
-  };
+  }, [router, fetchSlipDetail, showToast]);
 
   useEffect(() => {
     if (isUnlocked) {
@@ -558,7 +565,7 @@ export default function SalaryScreen() {
           html: htmlContent,
         });
         showToast({ title: 'Berhasil', message: 'Dokumen slip gaji dibuka', type: 'success' });
-      } catch (printErr: any) {
+      } catch {
         // Fallback jika pengguna ingin export file via printToFileAsync
         try {
           const { uri } = await Print.printToFileAsync({ html: htmlContent });

@@ -78,7 +78,7 @@ export function ProfileScreen() {
         const cached = await AsyncStorage.getItem('fullProfile');
         if (cached) setProfileData(JSON.parse(cached));
       }
-    } catch (error) {
+    } catch {
       const cached = await AsyncStorage.getItem('fullProfile');
       if (cached) setProfileData(JSON.parse(cached));
     }
@@ -91,7 +91,7 @@ export function ProfileScreen() {
       if (cached) {
         try {
           setProfileData(JSON.parse(cached));
-        } catch (_) {}
+        } catch {}
       }
     };
     loadCache();
@@ -153,7 +153,7 @@ export function ProfileScreen() {
             type: 'success'
           });
           router.replace('/login');
-        } catch (e) {
+        } catch {
           showToast({
             title: 'Error',
             message: 'Gagal logout dari aplikasi.',

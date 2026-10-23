@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useRef, ReactNode } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, Animated, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { theme } from './theme';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 

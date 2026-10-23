@@ -13,7 +13,7 @@ export default function ChangePasswordScreen() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
-  
+
   const [showCurrentPass, setShowCurrentPass] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
@@ -114,7 +114,7 @@ export default function ChangePasswordScreen() {
           type: 'error'
         });
       }
-    } catch (_) {
+    } catch {
       showToast({
         title: 'Error Koneksi',
         message: 'Gagal menghubungi server. Periksa koneksi internet Anda.',
@@ -127,8 +127,8 @@ export default function ChangePasswordScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen 
-        options={{ 
+      <Stack.Screen
+        options={{
           title: 'Ubah Password',
           headerStyle: { backgroundColor: theme.colors.primary },
           headerTintColor: '#fff',
@@ -137,7 +137,7 @@ export default function ChangePasswordScreen() {
               <MaterialIcons name="arrow-back" size={24} color="#fff" />
             </TouchableOpacity>
           )
-        }} 
+        }}
       />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
@@ -155,14 +155,14 @@ export default function ChangePasswordScreen() {
           </View>
           <View style={[styles.inputWrapper, formErrors.currentPassword && styles.inputWrapperError]}>
             <MaterialIcons name="lock-outline" size={20} color={formErrors.currentPassword ? theme.colors.danger : theme.colors.textMuted} style={styles.inputIcon} />
-            <TextInput 
-              style={styles.input} 
-              secureTextEntry={!showCurrentPass} 
-              value={currentPassword} 
+            <TextInput
+              style={styles.input}
+              secureTextEntry={!showCurrentPass}
+              value={currentPassword}
               onChangeText={(text) => {
                 setCurrentPassword(text);
                 if (formErrors.currentPassword) setFormErrors(prev => ({ ...prev, currentPassword: undefined }));
-              }} 
+              }}
               placeholder="Masukkan password saat ini"
               autoCapitalize="none"
             />
@@ -186,14 +186,14 @@ export default function ChangePasswordScreen() {
           </View>
           <View style={[styles.inputWrapper, formErrors.newPassword && styles.inputWrapperError]}>
             <MaterialIcons name="lock" size={20} color={formErrors.newPassword ? theme.colors.danger : theme.colors.textMuted} style={styles.inputIcon} />
-            <TextInput 
-              style={styles.input} 
-              secureTextEntry={!showNewPass} 
-              value={newPassword} 
+            <TextInput
+              style={styles.input}
+              secureTextEntry={!showNewPass}
+              value={newPassword}
               onChangeText={(text) => {
                 setNewPassword(text);
                 if (formErrors.newPassword) setFormErrors(prev => ({ ...prev, newPassword: undefined }));
-              }} 
+              }}
               placeholder="Masukkan password baru"
               autoCapitalize="none"
             />
@@ -217,14 +217,14 @@ export default function ChangePasswordScreen() {
           </View>
           <View style={[styles.inputWrapper, formErrors.passwordConfirmation && styles.inputWrapperError]}>
             <MaterialIcons name="verified-user" size={20} color={formErrors.passwordConfirmation ? theme.colors.danger : theme.colors.textMuted} style={styles.inputIcon} />
-            <TextInput 
-              style={styles.input} 
-              secureTextEntry={!showConfirmPass} 
-              value={passwordConfirmation} 
+            <TextInput
+              style={styles.input}
+              secureTextEntry={!showConfirmPass}
+              value={passwordConfirmation}
               onChangeText={(text) => {
                 setPasswordConfirmation(text);
                 if (formErrors.passwordConfirmation) setFormErrors(prev => ({ ...prev, passwordConfirmation: undefined }));
-              }} 
+              }}
               placeholder="Ulangi password baru"
               autoCapitalize="none"
             />
@@ -241,8 +241,8 @@ export default function ChangePasswordScreen() {
         </View>
 
         {/* TOMBOL SIMPAN */}
-        <TouchableOpacity 
-          style={[styles.btnSave, loading && { opacity: 0.7 }]} 
+        <TouchableOpacity
+          style={[styles.btnSave, loading && { opacity: 0.7 }]}
           onPress={handleSave}
           disabled={loading}
           activeOpacity={0.8}
@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
   iconCircle: { width: 84, height: 84, borderRadius: 42, backgroundColor: '#fef3c7', alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.l },
   title: { fontSize: 21, fontWeight: 'bold', color: theme.colors.text, marginBottom: 8 },
   subtitle: { fontSize: 13, color: theme.colors.textMuted, textAlign: 'center', marginBottom: theme.spacing.xl, paddingHorizontal: 16, lineHeight: 19 },
-  
+
   formGroup: { width: '100%', marginBottom: theme.spacing.l },
   label: { fontSize: 13, fontWeight: 'bold', color: theme.colors.text },
   labelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
   inputIcon: { marginRight: 8 },
   input: { flex: 1, paddingVertical: 13, fontSize: 14, color: theme.colors.text },
   eyeBtn: { padding: 6 },
-  
+
   btnSave: { backgroundColor: theme.colors.primary, width: '100%', paddingVertical: 14, borderRadius: theme.radius.m, alignItems: 'center', marginTop: 12, elevation: 2, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5 },
   btnSaveText: { color: '#fff', fontWeight: 'bold', fontSize: 15 }
 });

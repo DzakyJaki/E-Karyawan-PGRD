@@ -68,7 +68,7 @@ export function LoginScreen() {
       } else {
         Alert.alert('Login Gagal', data.message || 'Email atau Password salah.');
       }
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Terjadi kesalahan jaringan.');
     } finally {
       setLoading(false);

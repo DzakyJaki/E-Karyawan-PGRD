@@ -183,7 +183,7 @@ function ZoomableImage({ uri, maxWidth }: { uri: string; maxWidth: number }) {
     lastScale.current = 1;
     lastTranslateX.current = 0;
     lastTranslateY.current = 0;
-  }, [uri]);
+  }, [uri, scale, translateX, translateY]);
 
   const imgHeight = maxWidth * 0.78;
 
@@ -698,7 +698,7 @@ export function LeaveScreen() {
           await WebBrowser.openBrowserAsync(full);
         }
       }
-    } catch (_) {
+    } catch {
       showToast({ title: 'Error', message: 'Gagal membuka file lampiran', type: 'error' });
     }
   };
@@ -743,7 +743,7 @@ export function LeaveScreen() {
         setAttachmentMime('image/jpeg');
         setFormErrors(prev => ({ ...prev, attachment: undefined }));
       }
-    } catch (_) {
+    } catch {
       showToast({ title: 'Error', message: 'Gagal membuka galeri', type: 'error' });
     } finally {
       resumeAppLock(3000);
@@ -774,7 +774,7 @@ export function LeaveScreen() {
         setAttachmentMime('image/jpeg');
         setFormErrors(prev => ({ ...prev, attachment: undefined }));
       }
-    } catch (_) {
+    } catch {
       showToast({ title: 'Error', message: 'Gagal membuka kamera', type: 'error' });
     } finally {
       resumeAppLock(3000);
@@ -798,7 +798,7 @@ export function LeaveScreen() {
         setAttachmentMime(file.mimeType || (name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'));
         setFormErrors(prev => ({ ...prev, attachment: undefined }));
       }
-    } catch (_) {
+    } catch {
       showToast({ title: 'Error', message: 'Gagal memilih dokumen berkas', type: 'error' });
     } finally {
       resumeAppLock(3000);
@@ -909,7 +909,7 @@ export function LeaveScreen() {
             const errData = await response.json().catch(() => ({}));
             showToast({ title: 'Gagal', message: errData.message || 'Tidak dapat menghapus cuti ini', type: 'error' });
           }
-        } catch (_) {
+        } catch {
           showToast({ title: 'Error', message: 'Gagal menghubungi server', type: 'error' });
         }
       }

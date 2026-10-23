@@ -69,7 +69,7 @@ export default function EmployeeDataScreen() {
         const cached = await AsyncStorage.getItem('fullProfile');
         if (cached) setProfileData(JSON.parse(cached));
       }
-    } catch (_) {
+    } catch {
       const cached = await AsyncStorage.getItem('fullProfile');
       if (cached) setProfileData(JSON.parse(cached));
     }
@@ -81,7 +81,7 @@ export default function EmployeeDataScreen() {
       if (cached) {
         try {
           setProfileData(JSON.parse(cached));
-        } catch (_) {}
+        } catch {}
       }
     };
     loadCache();

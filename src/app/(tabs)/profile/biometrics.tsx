@@ -61,7 +61,7 @@ export default function BiometricsScreen() {
         } else {
           setIsEnabled(false);
         }
-      } catch (_) {
+      } catch {
         Alert.alert('Error', 'Gagal memproses pemindaian sidik jari.');
       }
     } else {

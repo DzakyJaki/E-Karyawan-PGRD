@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, AppState, TouchableOpacity, Alert } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -59,6 +59,24 @@ export function AppLock({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const authenticate = useCallback(async () => {
+    if (!hasBiometrics) return;
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Pindai Sidik Jari untuk Buka Aplikasi',
+        cancelLabel: 'Gunakan PIN',
+        disableDeviceFallback: false,
+      });
+
+      if (result.success) {
+        setIsLocked(false);
+        setPin('');
+      }
+    } catch (error) {
+      console.log('Autentikasi Error', error);
+    }
+  }, [hasBiometrics]);
+
   useEffect(() => {
     checkBiometrics();
     loadSavedPin();
@@ -100,25 +118,7 @@ export function AppLock({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.remove();
     };
-  }, [hasBiometrics]);
-
-  const authenticate = async () => {
-    if (!hasBiometrics) return;
-    try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Pindai Sidik Jari untuk Buka Aplikasi',
-        cancelLabel: 'Gunakan PIN',
-        disableDeviceFallback: false,
-      });
-
-      if (result.success) {
-        setIsLocked(false);
-        setPin('');
-      }
-    } catch (error) {
-      console.log('Autentikasi Error', error);
-    }
-  };
+  }, [authenticate]);
 
   const handleKeyPress = (num: string) => {
     if (pin.length < 6) {

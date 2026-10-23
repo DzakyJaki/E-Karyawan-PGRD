@@ -265,7 +265,7 @@ export function OvertimeScreen() {
         const errorMsg = json?.message || `Gagal ${isEdit ? 'memperbarui' : 'mengirim'} pengajuan lembur.`;
         Alert.alert('Gagal', errorMsg);
       }
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Terjadi kesalahan jaringan.');
     } finally {
       setSubmitting(false);
@@ -324,7 +324,7 @@ export function OvertimeScreen() {
           } else {
             showToast({ title: 'Gagal', message: 'Tidak dapat menghapus data ini', type: 'error' });
           }
-        } catch (_) {
+        } catch {
           showToast({ title: 'Error', message: 'Gagal menghubungi server', type: 'error' });
         }
       }

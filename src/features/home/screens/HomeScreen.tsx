@@ -19,11 +19,6 @@ import { getEffectiveScheduleForToday, normalizeTimeString } from '../../../core
 
 const { width } = Dimensions.get('window');
 
-const MONTH_NAMES_INDONESIA = [
-  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-];
-
 interface TodayAttendance {
   id?: number;
   date?: string;
@@ -49,9 +44,7 @@ export function HomeScreen() {
   const [todayAttendance, setTodayAttendance] = useState<TodayAttendance | null>(null);
   const [attendanceCount, setAttendanceCount] = useState<number>(0);
   const [remainingLeave, setRemainingLeave] = useState<number>(0);
-  const [totalOvertimeHours, setTotalOvertimeHours] = useState<number>(0);
   const [workTimeData, setWorkTimeData] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
   const fetchHomeScreenData = useCallback(async () => {
     try {
@@ -94,21 +87,15 @@ export function HomeScreen() {
         .then(res => res.ok ? res.json() : null)
         .catch(() => null);
 
-      // 4. Fetch Lembur (/api/my/lembur)
-      const lemburPromise = fetch(`${apiUrl}/api/my/lembur`, { headers })
-        .then(res => res.ok ? res.json() : null)
-        .catch(() => null);
-
-      // 5. Fetch Jam Kerja Cabang (/api/my/work-time)
+      // 4. Fetch Jam Kerja Cabang (/api/my/work-time)
       const workTimePromise = fetch(`${apiUrl}/api/my/work-time`, { headers })
         .then(res => res.ok ? res.json() : null)
         .catch(() => null);
 
-      const [profJson, presJson, cutiJson, lemburJson, workTimeJson] = await Promise.all([
+      const [profJson, presJson, cutiJson, workTimeJson] = await Promise.all([
         profilePromise,
         presensiPromise,
         cutiPromise,
-        lemburPromise,
         workTimePromise
       ]);
 
@@ -149,36 +136,20 @@ export function HomeScreen() {
         const totalRem = Math.max(0, totalAllocated - totalUsed);
         setRemainingLeave(totalRem);
       }
-
-      // Handle Total Lembur Disetujui Bulan Ini
-      if (lemburJson && Array.isArray(lemburJson.data)) {
-        const currentMonthPrefix = `${currentYear}-${currentMonth.toString().padStart(2, '0')}`;
-        const totalOvt = lemburJson.data
-          .filter((o: any) => {
-            const isApproved = (o.status || '').toLowerCase() === 'approved';
-            const isThisMonth = (o.date || '').startsWith(currentMonthPrefix);
-            return isApproved && isThisMonth;
-          })
-          .reduce((sum: number, o: any) => sum + (parseFloat(o.hours) || 0), 0);
-        setTotalOvertimeHours(totalOvt);
-      }
-
     } catch (err) {
       console.log('Error fetch home data:', err);
-    } finally {
-      setIsLoading(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     const loadCache = async () => {
       const cached = await AsyncStorage.getItem('fullProfile');
       if (cached) {
-        try { setProfileData(JSON.parse(cached)); } catch (_) {}
+        try { setProfileData(JSON.parse(cached)); } catch {}
       }
       const cachedWt = await AsyncStorage.getItem('cachedWorkTime');
       if (cachedWt) {
-        try { setWorkTimeData(JSON.parse(cachedWt)); } catch (_) {}
+        try { setWorkTimeData(JSON.parse(cachedWt)); } catch {}
       }
     };
     loadCache();
