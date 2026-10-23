@@ -70,6 +70,13 @@ export default function SalaryScreen() {
 
   // API Data States
   const [slipList, setSlipList] = useState<SlipGajiSummary[]>([]);
+  const slipListRef = useRef<SlipGajiSummary[]>([]);
+  const isFetchingRef = useRef(false);
+
+  useEffect(() => {
+    slipListRef.current = slipList;
+  }, [slipList]);
+
   const [selectedSlipIndex, setSelectedSlipIndex] = useState(0);
   const [selectedSlipDetail, setSelectedSlipDetail] = useState<SlipGajiDetail | null>(null);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
@@ -262,22 +269,24 @@ export default function SalaryScreen() {
         setSelectedSlipDetail(json);
       } else {
         // Fallback ke data list jika detail gagal
-        const list = fallbackList || slipList;
+        const list = fallbackList || slipListRef.current;
         const fallback = list.find(s => s.id === slipGajiId);
         if (fallback) setSelectedSlipDetail(fallback);
       }
     } catch {
-      const list = fallbackList || slipList;
+      const list = fallbackList || slipListRef.current;
       const fallback = list.find(s => s.id === slipGajiId);
       if (fallback) setSelectedSlipDetail(fallback);
     } finally {
       setDetailLoading(false);
     }
-  }, [slipList]);
+  }, []);
 
   // Fetch List Slip Gaji
   const fetchSlipGajiList = useCallback(async () => {
+    if (isFetchingRef.current) return;
     try {
+      isFetchingRef.current = true;
       setLoading(true);
       const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://dieselmart.pagaruyungdiesel.cloud';
       const token = await AsyncStorage.getItem('userToken');
@@ -304,6 +313,7 @@ export default function SalaryScreen() {
         const list: SlipGajiSummary[] = Array.isArray(json) 
           ? json 
           : (Array.isArray(json.data) ? json.data : []);
+        slipListRef.current = list;
         setSlipList(list);
 
         if (list.length > 0) {
@@ -318,6 +328,7 @@ export default function SalaryScreen() {
       showToast({ title: 'Error', message: 'Terjadi kesalahan jaringan', type: 'error' });
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
   }, [router, fetchSlipDetail, showToast]);
 
