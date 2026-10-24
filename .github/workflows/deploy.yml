@@ -1,0 +1,65 @@
+name: Deploy E-KARYAWAN to VPS
+
+on:
+  push:
+    branches:
+      - main # Trigger otomatis saat push ke branch main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Build Web (Expo Static Export)
+        env:
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL || 'https://dieselmart.pagaruyungdiesel.cloud' }}
+          EXPO_PUBLIC_USE_RN_FETCH: "1"
+        run: |
+          npm ci || npm install --legacy-peer-deps
+          npx expo export -p web
+          # Siapkan folder WebServer sesuai struktur folder di VPS
+          rm -rf WebServer
+          cp -r dist WebServer
+
+      - name: Copy files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 202.155.16.94
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          source: "WebServer,docker-compose.yml,Dockerfile,nginx.conf"
+          target: "/home/manajement_absensi"
+
+      - name: Run Docker via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 202.155.16.94
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          command_timeout: 10m
+          script: |
+            cd /home/manajement_absensi
+
+            # Jalankan docker compose untuk service e-karyawan di port 3001
+            if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+              docker compose up -d --build
+            elif command -v docker-compose >/dev/null 2>&1; then
+              docker-compose up -d --build
+            else
+              export PATH=$PATH:/usr/local/bin:/usr/bin
+              docker compose up -d --build || docker-compose up -d --build
+            fi
+
+            # Bersihkan cache Docker image lama agar hemat penyimpanan VPS
+            docker image prune -f
