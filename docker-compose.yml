@@ -1,7 +1,7 @@
 services:
   # ---------------------------------------------------------------------------
   # E-KARYAWAN Web Application Service (Nginx Alpine)
-  # Menyajikan folder dist hasil export Expo Web
+  # Folder VPS: /home/manajement_absensi/
   # ---------------------------------------------------------------------------
   e-karyawan:
     build:
@@ -11,11 +11,10 @@ services:
     container_name: e-karyawan
     restart: unless-stopped
     ports:
-      - "${PORT:-3000}:80"
+      - "3001:80"
     volumes:
-      # Mount folder dist ke dalam Nginx HTML
-      # Memungkinkan Anda memperbarui file dist di server secara instan
-      - ./dist:/usr/share/nginx/html:ro
+      # Mount folder WebServer di /home/manajement_absensi/WebServer ke Nginx
+      # Cukup upload file build baru ke folder WebServer tanpa perlu rebuild container
+      - ./WebServer:/usr/share/nginx/html:ro
     extra_hosts:
-      # Memungkinkan container menjangkau host machine jika API backend berjalan di localhost server
       - "host.docker.internal:host-gateway"

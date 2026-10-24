@@ -1,7 +1,6 @@
 # ==========================================
 # E-KARYAWAN Web Production Dockerfile
-# Hanya menggunakan Nginx Alpine (sangat ringan ~25MB)
-# Menyajikan folder dist hasil export Expo Web
+# VPS: /home/manajement_absensi/
 # ==========================================
 FROM nginx:alpine
 
@@ -11,8 +10,8 @@ RUN rm -rf /usr/share/nginx/html/*
 # Salin konfigurasi Nginx untuk SPA (Single Page Application / Expo Router)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Salin isi folder dist hasil "npx expo export -p web" ke dalam root HTML Nginx
-COPY dist /usr/share/nginx/html
+# Salin isi folder WebServer (berisi file export web) ke dalam root HTML Nginx
+COPY WebServer /usr/share/nginx/html
 
 EXPOSE 80
 
