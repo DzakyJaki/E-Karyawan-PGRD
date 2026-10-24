@@ -1,0 +1,21 @@
+services:
+  # ---------------------------------------------------------------------------
+  # E-KARYAWAN Web Application Service (Nginx Alpine)
+  # Menyajikan folder dist hasil export Expo Web
+  # ---------------------------------------------------------------------------
+  e-karyawan:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: e-karyawan:latest
+    container_name: e-karyawan
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:80"
+    volumes:
+      # Mount folder dist ke dalam Nginx HTML
+      # Memungkinkan Anda memperbarui file dist di server secara instan
+      - ./dist:/usr/share/nginx/html:ro
+    extra_hosts:
+      # Memungkinkan container menjangkau host machine jika API backend berjalan di localhost server
+      - "host.docker.internal:host-gateway"
