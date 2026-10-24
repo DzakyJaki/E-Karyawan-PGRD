@@ -46,6 +46,7 @@ export function ProfileScreen() {
 
   const [profileData, setProfileData] = useState<UserProfileData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [showFullNik, setShowFullNik] = useState(false);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -179,7 +180,17 @@ export function ProfileScreen() {
   const displayRole = typeof posRaw === 'object' && posRaw !== null
     ? (posRaw.name || posRaw.title || 'Karyawan')
     : (typeof posRaw === 'string' && posRaw ? posRaw : 'Karyawan');
-  const displayNik = typeof employee?.nik === 'string' ? employee?.nik : (employee?.nik ? String(employee.nik) : '-');
+  const rawNik = typeof employee?.nik === 'string' ? employee?.nik : (employee?.nik ? String(employee.nik) : '-');
+  const maskNik = (nikStr: string) => {
+    if (!nikStr || nikStr === '-') return '-';
+    const clean = nikStr.trim();
+    if (clean.length <= 8) return clean;
+    const start = clean.slice(0, 4);
+    const end = clean.slice(-4);
+    const middle = '*'.repeat(clean.length - 8);
+    return `${start}${middle}${end}`;
+  };
+  const displayNik = showFullNik ? rawNik : maskNik(rawNik);
   const statusRaw = employee?.status as any;
   const displayStatus = typeof statusRaw === 'object' && statusRaw !== null
     ? (statusRaw.name || statusRaw.label || 'Aktif')
@@ -239,10 +250,22 @@ export function ProfileScreen() {
         
         {/* FLOATING STATS CARD (MATCHING HOME SCREEN FLOATING CARD PATTERN) */}
         <View style={styles.floatingStatsCard}>
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>NIK</Text>
-            <Text style={styles.statValue}>{displayNik}</Text>
-          </View>
+          <TouchableOpacity 
+            style={styles.statBox} 
+            activeOpacity={0.7} 
+            onPress={() => setShowFullNik(prev => !prev)}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.statLabel}>NIK</Text>
+              <MaterialIcons 
+                name={showFullNik ? "visibility-off" : "visibility"} 
+                size={12} 
+                color={theme.colors.textMuted} 
+                style={{ marginLeft: 3, marginBottom: 2 }} 
+              />
+            </View>
+            <Text style={styles.statValue} numberOfLines={1}>{displayNik}</Text>
+          </TouchableOpacity>
           <View style={styles.statDivider} />
           <View style={styles.statBox}>
             <Text style={styles.statLabel}>Status</Text>

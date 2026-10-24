@@ -43,3 +43,9 @@ example
 # generated native folders
 /ios
 /android
+
+# IDE & Editor files
+.vscode/
+.claude/
+.cloude/
+.idea/
