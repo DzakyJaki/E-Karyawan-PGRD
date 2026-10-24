@@ -75,124 +75,132 @@ export function LoginScreen() {
     }
   };
 
+  const formContent = (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: 60 }]}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+      bounces={false}
+    >
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.logoCircle}>
+          <Image 
+            source={require('@/assets/images/icon.png')} 
+            style={styles.logoImage} 
+            resizeMode="cover"
+          />
+        </View>
+        <Text style={styles.title}>E-Karyawan</Text>
+        <Text style={styles.subtitle}>Sistem Informasi Karyawan</Text>
+      </View>
+
+      {/* Form */}
+      <View style={styles.formContainer}>
+        <View style={{ marginBottom: theme.spacing.s }}>
+          <View style={styles.labelRow}>
+            <Text style={styles.label}>Email Address</Text>
+            <Text style={styles.requiredBadge}>*Wajib</Text>
+          </View>
+          <View style={[styles.inputBox, formErrors.email && styles.inputBoxError]}>
+            <MaterialIcons 
+              name="email" 
+              size={20} 
+              color={formErrors.email ? theme.colors.danger : theme.colors.textMuted} 
+              style={styles.icon} 
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Masukkan email"
+              placeholderTextColor="#94a3b8"
+              value={email}
+              onChangeText={(text) => {
+                setEmail(text);
+                if (formErrors.email) setFormErrors(prev => ({ ...prev, email: undefined }));
+              }}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              returnKeyType="next"
+            />
+          </View>
+          {formErrors.email ? (
+            <View style={styles.inlineErrorRow}>
+              <MaterialIcons name="error-outline" size={14} color={theme.colors.danger} />
+              <Text style={styles.inlineErrorText}>{formErrors.email}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={{ marginBottom: theme.spacing.s }}>
+          <View style={styles.labelRow}>
+            <Text style={styles.label}>Password</Text>
+            <Text style={styles.requiredBadge}>*Wajib</Text>
+          </View>
+          <View style={[styles.inputBox, formErrors.password && styles.inputBoxError]}>
+            <MaterialIcons 
+              name="lock" 
+              size={20} 
+              color={formErrors.password ? theme.colors.danger : theme.colors.textMuted} 
+              style={styles.icon} 
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Masukkan password"
+              placeholderTextColor="#94a3b8"
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (formErrors.password) setFormErrors(prev => ({ ...prev, password: undefined }));
+              }}
+              secureTextEntry={!showPassword}
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
+            />
+            <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+              <MaterialIcons name={showPassword ? "visibility" : "visibility-off"} size={20} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+          {formErrors.password ? (
+            <View style={styles.inlineErrorRow}>
+              <MaterialIcons name="error-outline" size={14} color={theme.colors.danger} />
+              <Text style={styles.inlineErrorText}>{formErrors.password}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <TouchableOpacity style={styles.forgotBtn} onPress={() => router.push('/forgot-password')}>
+          <Text style={styles.forgotText}>Lupa Password?</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} disabled={loading} activeOpacity={0.85}>
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.loginBtnText}>MASUK SEKARANG</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* Footer */}
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>© 2026 TIM IT</Text>
+      </View>
+    </ScrollView>
+  );
+
   return (
     <KeyboardAvoidingView
       style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: 60 }]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.logoCircle}>
-              <Image 
-                source={require('@/assets/images/icon.png')} 
-                style={styles.logoImage} 
-                resizeMode="cover"
-              />
-            </View>
-            <Text style={styles.title}>E-Karyawan</Text>
-            <Text style={styles.subtitle}>Sistem Informasi Karyawan</Text>
-          </View>
-
-          {/* Form */}
-          <View style={styles.formContainer}>
-            <View style={{ marginBottom: theme.spacing.s }}>
-              <View style={styles.labelRow}>
-                <Text style={styles.label}>Email Address</Text>
-                <Text style={styles.requiredBadge}>*Wajib</Text>
-              </View>
-              <View style={[styles.inputBox, formErrors.email && styles.inputBoxError]}>
-                <MaterialIcons 
-                  name="email" 
-                  size={20} 
-                  color={formErrors.email ? theme.colors.danger : theme.colors.textMuted} 
-                  style={styles.icon} 
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Masukkan email"
-                  placeholderTextColor="#94a3b8"
-                  value={email}
-                  onChangeText={(text) => {
-                    setEmail(text);
-                    if (formErrors.email) setFormErrors(prev => ({ ...prev, email: undefined }));
-                  }}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  returnKeyType="next"
-                />
-              </View>
-              {formErrors.email ? (
-                <View style={styles.inlineErrorRow}>
-                  <MaterialIcons name="error-outline" size={14} color={theme.colors.danger} />
-                  <Text style={styles.inlineErrorText}>{formErrors.email}</Text>
-                </View>
-              ) : null}
-            </View>
-
-            <View style={{ marginBottom: theme.spacing.s }}>
-              <View style={styles.labelRow}>
-                <Text style={styles.label}>Password</Text>
-                <Text style={styles.requiredBadge}>*Wajib</Text>
-              </View>
-              <View style={[styles.inputBox, formErrors.password && styles.inputBoxError]}>
-                <MaterialIcons 
-                  name="lock" 
-                  size={20} 
-                  color={formErrors.password ? theme.colors.danger : theme.colors.textMuted} 
-                  style={styles.icon} 
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Masukkan password"
-                  placeholderTextColor="#94a3b8"
-                  value={password}
-                  onChangeText={(text) => {
-                    setPassword(text);
-                    if (formErrors.password) setFormErrors(prev => ({ ...prev, password: undefined }));
-                  }}
-                  secureTextEntry={!showPassword}
-                  returnKeyType="done"
-                  onSubmitEditing={handleLogin}
-                />
-                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                  <MaterialIcons name={showPassword ? "visibility" : "visibility-off"} size={20} color={theme.colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-              {formErrors.password ? (
-                <View style={styles.inlineErrorRow}>
-                  <MaterialIcons name="error-outline" size={14} color={theme.colors.danger} />
-                  <Text style={styles.inlineErrorText}>{formErrors.password}</Text>
-                </View>
-              ) : null}
-            </View>
-
-            <TouchableOpacity style={styles.forgotBtn} onPress={() => router.push('/forgot-password')}>
-              <Text style={styles.forgotText}>Lupa Password?</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} disabled={loading} activeOpacity={0.85}>
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.loginBtnText}>MASUK SEKARANG</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {/* Footer */}
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>© 2026 TIM IT</Text>
-          </View>
-        </ScrollView>
-      </TouchableWithoutFeedback>
+      {Platform.OS === 'web' ? (
+        formContent
+      ) : (
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          {formContent}
+        </TouchableWithoutFeedback>
+      )}
     </KeyboardAvoidingView>
   );
 }

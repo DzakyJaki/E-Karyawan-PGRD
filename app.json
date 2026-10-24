@@ -8,7 +8,8 @@
     "scheme": "ekaryawan",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ekaryawan"
     },
     "android": {
       "package": "com.ekaryawan",
