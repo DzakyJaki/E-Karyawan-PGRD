@@ -47,6 +47,7 @@ export default function EmployeeDataScreen() {
   const [activeTab, setActiveTab] = useState<'pribadi' | 'pegawai'>('pribadi');
   const [profileData, setProfileData] = useState<UserProfileData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [showFullNik, setShowFullNik] = useState(false);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -134,7 +135,33 @@ export default function EmployeeDataScreen() {
     : (typeof statusRaw === 'string' && statusRaw ? statusRaw : 'Aktif');
   const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=e0e7ff&color=3b82f6&size=200`;
 
-  const InfoRow = ({ icon, label, value, isLast = false }: { icon: string, label: string, value: string, isLast?: boolean }) => (
+  const maskNik = (nikStr?: string | null) => {
+    if (!nikStr || nikStr === '-') return '-';
+    const clean = String(nikStr).trim();
+    if (clean.length <= 8) return clean;
+    const start = clean.slice(0, 4);
+    const end = clean.slice(-4);
+    const middle = '*'.repeat(clean.length - 8);
+    return `${start}${middle}${end}`;
+  };
+
+  const InfoRow = ({ 
+    icon, 
+    label, 
+    value, 
+    isLast = false,
+    isMaskable = false,
+    isMasked = false,
+    onToggleMask
+  }: { 
+    icon: string; 
+    label: string; 
+    value: string; 
+    isLast?: boolean;
+    isMaskable?: boolean;
+    isMasked?: boolean;
+    onToggleMask?: () => void;
+  }) => (
     <View style={[styles.infoRow, !isLast && styles.borderBottom]}>
       <View style={styles.iconBox}>
         <MaterialIcons name={icon as any} size={20} color={theme.colors.primary} />
@@ -143,6 +170,19 @@ export default function EmployeeDataScreen() {
         <Text style={styles.infoLabel}>{label}</Text>
         <Text style={styles.infoValue}>{value || '-'}</Text>
       </View>
+      {isMaskable ? (
+        <TouchableOpacity 
+          onPress={onToggleMask} 
+          style={{ padding: 8, marginRight: -4 }}
+          activeOpacity={0.7}
+        >
+          <MaterialIcons 
+            name={isMasked ? "visibility-off" : "visibility"} 
+            size={20} 
+            color={theme.colors.textMuted} 
+          />
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 
@@ -214,7 +254,14 @@ export default function EmployeeDataScreen() {
           <View style={styles.card}>
             {activeTab === 'pribadi' ? (
               <View>
-                <InfoRow icon="credit-card" label="Nomor Induk Kependudukan (NIK)" value={employee?.nik || '-'} />
+                <InfoRow 
+                  icon="credit-card" 
+                  label="Nomor Induk Kependudukan (NIK)" 
+                  value={showFullNik ? (employee?.nik || '-') : maskNik(employee?.nik)} 
+                  isMaskable={Boolean(employee?.nik && employee.nik.length > 8)}
+                  isMasked={!showFullNik}
+                  onToggleMask={() => setShowFullNik(prev => !prev)}
+                />
                 <InfoRow icon="person" label="Nama Lengkap" value={displayName} />
                 <InfoRow icon="email" label="Email" value={employee?.email || user?.email || '-'} />
                 <InfoRow icon="wc" label="Jenis Kelamin" value={employee?.gender || '-'} />
@@ -223,7 +270,14 @@ export default function EmployeeDataScreen() {
               </View>
             ) : (
               <View>
-                <InfoRow icon="badge" label="NIK Karyawan" value={employee?.nik || '-'} />
+                <InfoRow 
+                  icon="badge" 
+                  label="NIK Karyawan" 
+                  value={showFullNik ? (employee?.nik || '-') : maskNik(employee?.nik)} 
+                  isMaskable={Boolean(employee?.nik && employee.nik.length > 8)}
+                  isMasked={!showFullNik}
+                  onToggleMask={() => setShowFullNik(prev => !prev)}
+                />
                 <InfoRow icon="business" label="Kantor Cabang" value={branch?.name ? `${branch.name} (${branch.type || 'store'})` : '-'} />
                 <InfoRow icon="event-available" label="Tanggal Bergabung" value={formatDateIndo(employee?.joined_date)} />
                 <InfoRow icon="verified" label="Status Karyawan" value={displayStatus} />
