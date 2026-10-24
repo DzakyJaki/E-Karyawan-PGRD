@@ -256,7 +256,7 @@ export function ProfileScreen() {
             onPress={() => setShowFullNik(prev => !prev)}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.statLabel}>NIK</Text>
+              <Text style={styles.statLabel}>NIK Karyawan</Text>
               <MaterialIcons 
                 name={showFullNik ? "visibility-off" : "visibility"} 
                 size={12} 
