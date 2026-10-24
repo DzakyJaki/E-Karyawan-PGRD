@@ -303,7 +303,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   icon: { marginRight: 10 },
-  input: { flex: 1, color: theme.colors.text, fontSize: 16 },
+  input: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 16,
+    height: '100%',
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' as any } : {}),
+  },
 
   forgotBtn: { alignSelf: 'flex-end', marginBottom: theme.spacing.xl, marginTop: -8 },
   forgotText: { color: theme.colors.primaryLight, fontWeight: '600' },
