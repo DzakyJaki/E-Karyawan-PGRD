@@ -212,6 +212,23 @@ export function HomeScreen() {
     return Boolean(hasLat && hasLon && hasRadius);
   }, [branchLat, branchLon, branchRadius]);
 
+  // Resolusi jadwal aktif hari ini (otomatis membaca array schedules hari Jumat / hari kerja lainnya)
+  const activeSchedule = useMemo(() => {
+    return getEffectiveScheduleForToday(workTimeData);
+  }, [workTimeData]);
+  const effectiveWork = activeSchedule || workTimeData;
+
+  const todayDayName = effectiveWork?.day_name || new Date().toLocaleDateString('id-ID', { weekday: 'long' });
+  const isWorkClosedToday = Boolean(effectiveWork?.is_closed_today);
+  const workStartTime = effectiveWork?.work_start_time ? effectiveWork.work_start_time.substring(0, 5) : '08:00';
+  const workEndTime = effectiveWork?.work_end_time
+    ? normalizeTimeString(effectiveWork.work_end_time, effectiveWork.work_start_time)
+    : '17:00';
+
+  const todayScheduleText = isWorkClosedToday
+    ? `${todayDayName} • Libur / Tutup`
+    : `${todayDayName} • ${workStartTime} - ${workEndTime} WIB`;
+
   const getAttendanceBadge = () => {
     if (!isBranchLocationConfigured) {
       return { bg: '#fee2e2', text: '#991b1b', label: 'Lokasi Belum Diatur' };
@@ -239,23 +256,6 @@ export function HomeScreen() {
   };
 
   const attendanceBadge = getAttendanceBadge();
-
-  // Resolusi jadwal aktif hari ini (otomatis membaca array schedules hari Jumat / hari kerja lainnya)
-  const activeSchedule = useMemo(() => {
-    return getEffectiveScheduleForToday(workTimeData);
-  }, [workTimeData]);
-  const effectiveWork = activeSchedule || workTimeData;
-
-  const todayDayName = effectiveWork?.day_name || new Date().toLocaleDateString('id-ID', { weekday: 'long' });
-  const isWorkClosedToday = Boolean(effectiveWork?.is_closed_today);
-  const workStartTime = effectiveWork?.work_start_time ? effectiveWork.work_start_time.substring(0, 5) : '08:00';
-  const workEndTime = effectiveWork?.work_end_time
-    ? normalizeTimeString(effectiveWork.work_end_time, effectiveWork.work_start_time)
-    : '17:00';
-
-  const todayScheduleText = isWorkClosedToday
-    ? `${todayDayName} • Libur / Tutup`
-    : `${todayDayName} • ${workStartTime} - ${workEndTime} WIB`;
 
   const todayBreakScheduleText = useMemo(() => {
     if (isWorkClosedToday) {
