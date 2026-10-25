@@ -24,6 +24,8 @@ const MONTH_NAMES_INDONESIA = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
+const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
 interface AttendanceItem {
   id: number;
   employee_id: number;
@@ -55,6 +57,18 @@ interface AttendanceItem {
   updated_at?: string;
 }
 
+export interface DailySchedule {
+  day_of_week: number;
+  work_start_time?: string | null;
+  dispensation_time?: string | null;
+  work_end_time?: string | null;
+  overtime_start_time?: string | null;
+  kantor_break_until?: string | null;
+  simultaneous_break_start?: string | null;
+  simultaneous_break_end?: string | null;
+  is_closed?: boolean;
+}
+
 export interface WorkTimeData {
   id: number;
   name: string;
@@ -77,11 +91,17 @@ export interface WorkTimeData {
   break_start_time?: string | null;
   break_end_time?: string | null;
   kantor_break_until?: string | null;
+  is_break_simultaneous?: boolean;
+  work_time_source?: string;
+  simultaneous_break_start?: string | null;
+  simultaneous_break_end?: string | null;
   closed_days?: number[];
+  schedules?: DailySchedule[];
   today?: string;
   day_name?: string;
   is_closed_today?: boolean;
 }
+
 
 // Rumus Haversine untuk menghitung jarak akurat (meter)
 function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -127,6 +147,7 @@ export function AttendanceScreen() {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [tempMonth, setTempMonth] = useState(currentD.getMonth() + 1);
   const [tempYear, setTempYear] = useState(currentD.getFullYear());
+  const [showWeeklyScheduleModal, setShowWeeklyScheduleModal] = useState(false);
 
   // Branch / Office Info fallback dari profile cache
   const [branchInfo, setBranchInfo] = useState<{ name: string; address?: string } | null>(null);
@@ -444,6 +465,18 @@ export function AttendanceScreen() {
   }, [workTimeData, time]);
 
   const effectiveWork = activeSchedule || workTimeData;
+
+  const currentDayOfWeek = time.getDay();
+
+  // Urutan jadwal 7 hari: Senin (1) s/d Minggu (0 -> di paling bawah)
+  const orderedSchedules = useMemo(() => {
+    if (!Array.isArray(workTimeData?.schedules)) return [];
+    return [...workTimeData.schedules].sort((a, b) => {
+      const orderA = a.day_of_week === 0 ? 7 : a.day_of_week;
+      const orderB = b.day_of_week === 0 ? 7 : b.day_of_week;
+      return orderA - orderB;
+    });
+  }, [workTimeData?.schedules]);
 
   // Jadwal Jam Istirahat Kantor / Shift
   const breakScheduleText = useMemo(() => {
@@ -1067,9 +1100,9 @@ export function AttendanceScreen() {
     }
 
     // 7. Konfirmasi Modal
-    const isClosed = workTimeData?.is_closed_today;
+    const isClosed = effectiveWork?.is_closed_today;
     const closedWarning = isClosed
-      ? `\n\n⚠️ Catatan: Hari ini adalah hari libur / toko tutup (${workTimeData?.day_name || 'Libur'}).`
+      ? `\n\n⚠️ Catatan: Hari ini adalah hari libur / toko tutup (${effectiveWork?.day_name || 'Libur'}).`
       : '';
 
     let confirmTitle = 'Konfirmasi Presensi';
@@ -1331,20 +1364,20 @@ export function AttendanceScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <View style={[
                   styles.scheduleDayBadge, 
-                  workTimeData?.is_closed_today ? styles.scheduleDayClosed : styles.scheduleDayOpen,
+                  effectiveWork?.is_closed_today ? styles.scheduleDayClosed : styles.scheduleDayOpen,
                   { marginRight: 4 }
                 ]}>
                   <MaterialIcons 
-                    name={workTimeData?.is_closed_today ? 'event-busy' : 'event-available'} 
+                    name={effectiveWork?.is_closed_today ? 'event-busy' : 'event-available'} 
                     size={12} 
-                    color={workTimeData?.is_closed_today ? '#b91c1c' : '#15803d'} 
+                    color={effectiveWork?.is_closed_today ? '#b91c1c' : '#15803d'} 
                     style={{ marginRight: 3 }} 
                   />
                   <Text style={[
                     styles.scheduleDayText, 
-                    workTimeData?.is_closed_today ? styles.scheduleTextClosed : styles.scheduleTextOpen
+                    effectiveWork?.is_closed_today ? styles.scheduleTextClosed : styles.scheduleTextOpen
                   ]}>
-                    {workTimeData?.is_closed_today 
+                    {effectiveWork?.is_closed_today 
                       ? `Libur` 
                       : `Buka`}
                   </Text>
@@ -1369,11 +1402,11 @@ export function AttendanceScreen() {
               <View style={styles.scheduleBox}>
                 <Text style={styles.scheduleBoxLabel}>Jam Masuk</Text>
                 <Text style={styles.scheduleBoxTime}>
-                  {workTimeData?.work_start_time ? workTimeData.work_start_time.substring(0, 5) : '08:00'}
+                  {effectiveWork?.work_start_time ? effectiveWork.work_start_time.substring(0, 5) : '--:--'}
                 </Text>
                 <Text style={styles.scheduleBoxSub}>
-                  {workTimeData?.dispensation_time 
-                    ? `Batas: ${workTimeData.dispensation_time.substring(0, 5)}` 
+                  {effectiveWork?.dispensation_time 
+                    ? `Batas: ${effectiveWork.dispensation_time.substring(0, 5)}` 
                     : 'Tepat Waktu'}
                 </Text>
               </View>
@@ -1400,6 +1433,7 @@ export function AttendanceScreen() {
                 </Text>
               </View>
             </View>
+
 
             {/* KARTU JADWAL & STATUS ISTIRAHAT */}
             <View style={styles.breakScheduleCard}>
@@ -1476,8 +1510,24 @@ export function AttendanceScreen() {
                 </View>
               </View>
             </View>
+
+            {/* TOMBOL LIHAT JADWAL 7 HARI CABANG */}
+            {Array.isArray(workTimeData?.schedules) && workTimeData.schedules.length > 0 && (
+              <TouchableOpacity 
+                style={styles.viewWeeklyScheduleBtn}
+                onPress={() => setShowWeeklyScheduleModal(true)}
+                activeOpacity={0.7}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <MaterialIcons name="calendar-month" size={15} color={theme.colors.primary} style={{ marginRight: 6 }} />
+                  <Text style={styles.viewWeeklyScheduleBtnText}>Lihat Jadwal Kerja Lengkap (7 Hari)</Text>
+                </View>
+                <MaterialIcons name="chevron-right" size={18} color={theme.colors.primary} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
+
 
         {/* BANNER NOTIFIKASI JIKA SEDANG WAKTU ISTIRAHAT */}
         {isCurrentlyOnBreak && (
@@ -1789,9 +1839,105 @@ export function AttendanceScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* MODAL JADWAL LENGKAP 7 HARI */}
+      <Modal visible={showWeeklyScheduleModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '85%' }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={styles.modalTitle}>Jadwal Jam Kerja Cabang</Text>
+                <Text style={styles.modalSubtitle}>{effectiveBranchName} • Jadwal Operasional Mingguan</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowWeeklyScheduleModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <MaterialIcons name="close" size={24} color={theme.colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }}>
+              {orderedSchedules.map((item) => {
+                const isToday = item.day_of_week === currentDayOfWeek;
+                const isClosed = Boolean(item.is_closed);
+                const startTime = item.work_start_time ? item.work_start_time.substring(0, 5) : '--:--';
+                const endTime = item.work_end_time ? normalizeTimeString(item.work_end_time, item.work_start_time) : '--:--';
+                const hasBreak = item.simultaneous_break_start && item.simultaneous_break_end;
+                
+                return (
+                  <View 
+                    key={item.day_of_week}
+                    style={[
+                      styles.weeklyScheduleRow,
+                      isToday && styles.weeklyScheduleRowToday,
+                      isClosed && styles.weeklyScheduleRowClosed
+                    ]}
+                  >
+                    <View style={styles.weeklyScheduleDayCol}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={[styles.weeklyScheduleDayName, isToday && { color: theme.colors.primary, fontWeight: '700' }]}>
+                          {DAY_NAMES[item.day_of_week]}
+                        </Text>
+                        {isToday && (
+                          <View style={styles.todaySmallBadge}>
+                            <Text style={styles.todaySmallBadgeText}>Hari Ini</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={[
+                        styles.weeklyStatusBadge,
+                        isClosed ? { backgroundColor: '#fee2e2' } : { backgroundColor: '#dcfce7' }
+                      ]}>
+                        <Text style={[
+                          styles.weeklyStatusBadgeText,
+                          isClosed ? { color: '#991b1b' } : { color: '#166534' }
+                        ]}>
+                          {isClosed ? 'Libur' : 'Buka'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.weeklyScheduleDetailCol}>
+                      {isClosed ? (
+                        <Text style={styles.weeklyScheduleClosedText}>Libur / Tutup</Text>
+                      ) : (
+                        <>
+                          <Text style={styles.weeklyScheduleTimeText}>
+                            {startTime} - {endTime} WIB
+                          </Text>
+                          <Text style={styles.weeklyScheduleSubDetail}>
+                            Batas Dispensasi: {item.dispensation_time ? item.dispensation_time.substring(0, 5) : 'Tepat Waktu'}
+                          </Text>
+                          {hasBreak ? (
+                            <Text style={styles.weeklyScheduleBreakDetail}>
+                              Istirahat: {item.simultaneous_break_start?.substring(0, 5)} - {item.simultaneous_break_end?.substring(0, 5)} WIB {item.day_of_week === 5 ? '(Sholat Jumat)' : ''}
+                            </Text>
+                          ) : item.kantor_break_until ? (
+                            <Text style={styles.weeklyScheduleBreakDetail}>
+                              Istirahat s/d {item.kantor_break_until.substring(0, 5)} WIB
+                            </Text>
+                          ) : null}
+                        </>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.filterModalFooter}>
+              <TouchableOpacity 
+                style={styles.btnApplyFilter}
+                onPress={() => setShowWeeklyScheduleModal(false)}
+              >
+                <Text style={styles.btnApplyFilterText}>Tutup</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
@@ -2375,5 +2521,103 @@ const styles = StyleSheet.create({
   monthChipTextActive: { color: theme.colors.primary, fontWeight: 'bold' },
   filterModalFooter: { marginTop: 20, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
   btnApplyFilter: { backgroundColor: theme.colors.primary, paddingVertical: 12, borderRadius: theme.radius.m, alignItems: 'center' },
-  btnApplyFilterText: { color: '#fff', fontWeight: 'bold', fontSize: 14 }
+  btnApplyFilterText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+
+  viewWeeklyScheduleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 10
+  },
+  viewWeeklyScheduleBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.primary
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: theme.colors.textMuted,
+    marginTop: 2
+  },
+  weeklyScheduleRow: {
+    flexDirection: 'row',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8
+  },
+  weeklyScheduleRowToday: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#86efac'
+  },
+  weeklyScheduleRowClosed: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca'
+  },
+  weeklyScheduleDayCol: {
+    width: 100,
+    justifyContent: 'center'
+  },
+  weeklyScheduleDayName: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: theme.colors.text
+  },
+  todaySmallBadge: {
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    marginLeft: 4
+  },
+  todaySmallBadgeText: {
+    fontSize: 9,
+    color: '#fff',
+    fontWeight: 'bold'
+  },
+  weeklyStatusBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 4
+  },
+  weeklyStatusBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold'
+  },
+  weeklyScheduleDetailCol: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingLeft: 8
+  },
+  weeklyScheduleClosedText: {
+    fontSize: 13,
+    color: '#991b1b',
+    fontWeight: '600'
+  },
+  weeklyScheduleTimeText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: theme.colors.text
+  },
+  weeklyScheduleSubDetail: {
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    marginTop: 2
+  },
+  weeklyScheduleBreakDetail: {
+    fontSize: 11,
+    color: '#d97706',
+    fontWeight: '500',
+    marginTop: 2
+  }
 });

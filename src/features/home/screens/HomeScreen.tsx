@@ -423,6 +423,12 @@ export function HomeScreen() {
         </View>
 
         <Text style={styles.currentDate}>{todayFormatted}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14, marginTop: -6 }}>
+          <MaterialIcons name="schedule" size={13} color={theme.colors.textMuted} style={{ marginRight: 4 }} />
+          <Text style={{ fontSize: 12, color: theme.colors.textMuted, fontWeight: '500' }}>
+            Jadwal: {todayScheduleText}
+          </Text>
+        </View>
         
         {/* BARIS JAM UTAMA: MASUK & PULANG (LEGA & SIMETRIS) */}
         <View style={styles.attendanceMainRow}>

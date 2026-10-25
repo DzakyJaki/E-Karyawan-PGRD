@@ -92,14 +92,22 @@ export function getEffectiveScheduleForToday(workTimeData: any, targetDate: Date
     effectiveShiftName = dayOfWeek === 5 ? 'Sholat Jumat' : 'Istirahat Serentak';
   }
 
+  const rawDispensation = daySchedule?.dispensation_time || workTimeData.dispensation_time || null;
+  const rawOvertime = daySchedule?.overtime_start_time || workTimeData.overtime_start_time || null;
+  const rawKantorBreakUntil = daySchedule?.kantor_break_until || workTimeData.kantor_break_until || null;
+
+  const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const dayName = workTimeData.day_name || DAY_NAMES[dayOfWeek];
+
   return {
     ...workTimeData,
+    day_name: dayName,
     work_start_time: rawStartTime,
-    dispensation_time: daySchedule?.dispensation_time || workTimeData.dispensation_time || '08:15',
+    dispensation_time: rawDispensation,
     work_end_time: normalizedEndTime,
     raw_work_end_time: rawEndTime,
-    overtime_start_time: daySchedule?.overtime_start_time || workTimeData.overtime_start_time || '18:05',
-    kantor_break_until: daySchedule?.kantor_break_until || workTimeData.kantor_break_until || '15:00',
+    overtime_start_time: rawOvertime,
+    kantor_break_until: rawKantorBreakUntil,
     simultaneous_break_start: simultaneousStart,
     simultaneous_break_end: simultaneousEnd,
     has_simultaneous_break: hasSimultaneousBreak,
@@ -112,3 +120,4 @@ export function getEffectiveScheduleForToday(workTimeData: any, targetDate: Date
     day_of_week: dayOfWeek,
   };
 }
+
