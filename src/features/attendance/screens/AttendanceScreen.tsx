@@ -18,6 +18,7 @@ import { theme } from '../../../core/theme';
 import { useToast } from '../../../core/ToastContext';
 import { scheduleBreakReminders } from '../../../core/breakNotificationService';
 import { getEffectiveScheduleForToday, normalizeTimeString } from '../../../core/timeUtils';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const MONTH_NAMES_INDONESIA = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -118,6 +119,7 @@ function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2:
 }
 
 export function AttendanceScreen() {
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { showConfirm } = useConfirm();
 
@@ -674,6 +676,20 @@ export function AttendanceScreen() {
 
   // Konfigurasi Tombol Pintar Presensi (Smart Action Button)
   const smartAction = useMemo(() => {
+    // 0. Hari Ini Libur / Toko Tutup
+    if (effectiveWork?.is_closed_today && !hasClockedInToday) {
+      return {
+        type: 'Check In' as const,
+        title: 'Hari Ini Libur / Tutup',
+        sub: `Kantor/toko cabang sedang libur (${effectiveWork?.day_name || 'Libur'}). Presensi dinonaktifkan.`,
+        icon: 'event-busy' as keyof typeof MaterialIcons.glyphMap,
+        btnColor: '#64748b',
+        disabled: true,
+        canSkipToCheckout: false,
+        isCompleted: false
+      };
+    }
+
     // 1. Belum Masuk Kerja
     if (!hasClockedInToday) {
       let sub = 'Tekan untuk Mulai Jam Kerja';
@@ -899,6 +915,16 @@ export function AttendanceScreen() {
 
   // Trigger Action Check-in / Break / Check-out
   const handleTriggerAction = (type: 'Check In' | 'Check Out' | 'Mulai Istirahat' | 'Selesai Istirahat') => {
+    // 0. Validasi Hari Libur / Toko Tutup
+    if (effectiveWork?.is_closed_today && type === 'Check In') {
+      showToast({
+        title: 'Hari Libur / Toko Tutup',
+        message: `Hari ini kantor/toko cabang sedang tutup (${effectiveWork?.day_name || 'Libur'}). Presensi dinonaktifkan.`,
+        type: 'warning'
+      });
+      return;
+    }
+
     // 0. Validasi Pengaturan Lokasi Cabang oleh Admin (Latitude, Longitude & Radius)
     if (!isBranchLocationConfigured) {
       showToast({
@@ -1102,7 +1128,7 @@ export function AttendanceScreen() {
     // 7. Konfirmasi Modal
     const isClosed = effectiveWork?.is_closed_today;
     const closedWarning = isClosed
-      ? `\n\n⚠️ Catatan: Hari ini adalah hari libur / toko tutup (${effectiveWork?.day_name || 'Libur'}).`
+      ? `\n\n Catatan: Hari ini adalah hari libur / toko tutup (${effectiveWork?.day_name || 'Libur'}).`
       : '';
 
     let confirmTitle = 'Konfirmasi Presensi';
@@ -1275,7 +1301,8 @@ export function AttendanceScreen() {
       >
         
         {/* HEADER SECTION */}
-        <View style={styles.headerContainer}>
+        <View style={[styles.headerContainer, { paddingTop: Math.max(insets.top + 14, 28) }]}>
+          <Text style={styles.headerMainTitle}>Presensi</Text>
           <Text style={styles.dateText}>{formattedDate}</Text>
           <Text style={styles.timeText}>{formattedTime}</Text>
 
@@ -1402,12 +1429,16 @@ export function AttendanceScreen() {
               <View style={styles.scheduleBox}>
                 <Text style={styles.scheduleBoxLabel}>Jam Masuk</Text>
                 <Text style={styles.scheduleBoxTime}>
-                  {effectiveWork?.work_start_time ? effectiveWork.work_start_time.substring(0, 5) : '--:--'}
+                  {effectiveWork?.is_closed_today 
+                    ? '--:--' 
+                    : (effectiveWork?.work_start_time ? effectiveWork.work_start_time.substring(0, 5) : '--:--')}
                 </Text>
                 <Text style={styles.scheduleBoxSub}>
-                  {effectiveWork?.dispensation_time 
-                    ? `Batas: ${effectiveWork.dispensation_time.substring(0, 5)}` 
-                    : 'Tepat Waktu'}
+                  {effectiveWork?.is_closed_today 
+                    ? 'Hari Libur' 
+                    : (effectiveWork?.dispensation_time 
+                        ? `Batas: ${effectiveWork.dispensation_time.substring(0, 5)}` 
+                        : 'Tepat Waktu')}
                 </Text>
               </View>
 
@@ -1416,9 +1447,11 @@ export function AttendanceScreen() {
               <View style={styles.scheduleBox}>
                 <Text style={styles.scheduleBoxLabel}>Jam Pulang</Text>
                 <Text style={styles.scheduleBoxTime}>
-                  {workEndLabel}
+                  {effectiveWork?.is_closed_today ? '--:--' : workEndLabel}
                 </Text>
-                <Text style={styles.scheduleBoxSub}>WIB</Text>
+                <Text style={styles.scheduleBoxSub}>
+                  {effectiveWork?.is_closed_today ? 'Toko Tutup' : 'WIB'}
+                </Text>
               </View>
 
               <View style={styles.scheduleDivider} />
@@ -1950,6 +1983,13 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
     alignItems: 'center'
+  },
+  headerMainTitle: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 6,
+    letterSpacing: -0.3,
   },
   dateText: { color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: '500', marginBottom: 4 },
   timeText: { color: '#fff', fontSize: 48, fontWeight: 'bold', letterSpacing: -1.5, marginBottom: 16 },

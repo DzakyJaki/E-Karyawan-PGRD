@@ -232,6 +232,9 @@ export function HomeScreen() {
     if (todayAttendance?.clock_in) {
       return { bg: '#e0e7ff', text: '#3730a3', label: 'Sudah Masuk' };
     }
+    if (isWorkClosedToday) {
+      return { bg: '#fee2e2', text: '#991b1b', label: 'Hari Libur' };
+    }
     return { bg: '#fee2e2', text: '#991b1b', label: 'Belum Presensi' };
   };
 
@@ -452,7 +455,7 @@ export function HomeScreen() {
               <Text style={[styles.mainSubStatus, todayAttendance?.is_late && { color: '#b91c1c', fontWeight: 'bold' }]} numberOfLines={1}>
                 {todayAttendance?.clock_in 
                   ? (todayAttendance.is_late ? `Telat ${todayAttendance.late_minutes ? `${todayAttendance.late_minutes}m` : ''}` : 'Tepat Waktu')
-                  : 'Belum Check In'}
+                  : (isWorkClosedToday ? 'Toko Tutup' : 'Belum Check In')}
               </Text>
             </View>
           </View>

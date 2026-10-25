@@ -6,7 +6,7 @@ import { NetworkNotifier } from '../components/NetworkNotifier';
 import { BreakNotificationBanner } from '../components/BreakNotificationBanner';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { useEffect } from 'react';
-import { Text, View } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 import { ToastProvider } from '../core/ToastContext';
 import { ConfirmProvider } from '../core/ConfirmContext';
 import { initBreakNotificationService } from '../core/breakNotificationService';
@@ -14,6 +14,43 @@ import { initBreakNotificationService } from '../core/breakNotificationService';
 export default function RootLayout() {
   useEffect(() => {
     initBreakNotificationService();
+
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const styleId = 'global-custom-web-styles';
+      if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+          /* Hilangkan border bawah navbar bawaan di web */
+          header, [role="banner"] {
+            border-bottom: none !important;
+            border-bottom-width: 0 !important;
+            border-bottom-color: transparent !important;
+            box-shadow: none !important;
+          }
+          /* Custom sleek scrollbar agar tidak meninggalkan kotak putih di pojok navbar */
+          html, body {
+            overflow-x: hidden;
+            background-color: #f8fafc;
+          }
+          ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+          }
+          ::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          ::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+          }
+          ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 0, 0, 0.35);
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    }
   }, []);
 
   const [fontsLoaded] = useFonts({

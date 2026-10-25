@@ -28,6 +28,8 @@ export default function TabsLayout() {
         backgroundColor: theme.colors.primary,
         elevation: 0,
         shadowOpacity: 0,
+        borderBottomWidth: 0,
+        borderBottomColor: 'transparent',
       },
       headerShadowVisible: false,
       headerTintColor: '#fff',
@@ -54,6 +56,7 @@ export default function TabsLayout() {
       }} />
       <Tabs.Screen name="attendance" options={{
         title: 'Presensi',
+        headerShown: false,
         tabBarLabel: () => null,
         tabBarIcon: ({ focused }) => (
           <View style={[styles.centerButton, focused && styles.centerButtonFocused]}>
