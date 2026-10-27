@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../../core/theme';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useConfirm } from '../../../core/ConfirmContext';
@@ -196,8 +196,6 @@ export function ProfileScreen() {
     ? (statusRaw.name || statusRaw.label || 'Aktif')
     : (typeof statusRaw === 'string' && statusRaw ? statusRaw : 'Aktif');
   const masaKerja = calculateMasaKerja(employee?.joined_date);
-  const avatarColor = theme.colors.primary.replace('#', '');
-  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=fff&color=${avatarColor}&size=200`;
 
   const menuGroups = [
     {
@@ -228,17 +226,9 @@ export function ProfileScreen() {
         
         {/* HERO HEADER SECTION (CLEAN, SOLID BLUE, ZERO REDUNDANCY) */}
         <View style={[styles.headerBackground, { paddingTop: Math.max(insets.top + 20, 44) }]}>
-          {/* Centered Avatar with Camera Badge */}
+          {/* Centered Avatar Icon */}
           <View style={styles.avatarWrapper}>
-            <View style={styles.avatarBorder}>
-              <Image 
-                source={{ uri: avatarUrl }} 
-                style={styles.avatarImage} 
-              />
-            </View>
-            <TouchableOpacity style={styles.editAvatarBtn} activeOpacity={0.8}>
-              <MaterialIcons name="camera-alt" size={15} color="#fff" />
-            </TouchableOpacity>
+            <MaterialCommunityIcons name="account-circle" size={96} color="#ffffff" />
           </View>
 
           {/* User Name & Role (Clean & Single Occurrence) */}

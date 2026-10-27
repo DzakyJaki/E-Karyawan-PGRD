@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { theme } from '../../../core/theme';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface DeductionType {
@@ -133,7 +133,6 @@ export default function EmployeeDataScreen() {
   const displayStatus = typeof statusRaw === 'object' && statusRaw !== null
     ? (statusRaw.name || statusRaw.label || 'Aktif')
     : (typeof statusRaw === 'string' && statusRaw ? statusRaw : 'Aktif');
-  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=e0e7ff&color=3b82f6&size=200`;
 
   const maskNik = (nikStr?: string | null) => {
     if (!nikStr || nikStr === '-') return '-';
@@ -212,10 +211,7 @@ export default function EmployeeDataScreen() {
 
         {/* Profile Card (Negative Margin for Overlap) */}
         <View style={styles.profileCard}>
-          <Image 
-            source={{ uri: avatarUrl }} 
-            style={styles.avatar} 
-          />
+          <MaterialCommunityIcons name="account-circle" size={88} color={theme.colors.primary} style={{ marginBottom: 8 }} />
           <Text style={styles.name}>{displayName}</Text>
           <Text style={styles.role}>{displayRole}</Text>
           <View style={styles.badgeContainer}>

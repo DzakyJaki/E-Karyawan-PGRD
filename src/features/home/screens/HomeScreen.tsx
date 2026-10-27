@@ -1,10 +1,9 @@
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
-  Image,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -181,7 +180,6 @@ export function HomeScreen() {
   const branchName = typeof branchRaw === 'object' && branchRaw !== null
     ? (branchRaw.name || '')
     : (typeof branchRaw === 'string' ? branchRaw : '');
-  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=fff&color=3b82f6&size=100`;
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -408,7 +406,7 @@ export function HomeScreen() {
             onPress={() => router.push('/(tabs)/profile')}
             activeOpacity={0.8}
           >
-            <Image source={{ uri: avatarUrl }} style={{ width: 44, height: 44, borderRadius: 22 }} />
+            <MaterialCommunityIcons name="account-circle" size={50} color="#ffffff" />
           </TouchableOpacity>
         </View>
       </View>
@@ -712,11 +710,8 @@ const styles = StyleSheet.create({
   name: { color: '#ffffff', fontSize: 22, fontWeight: 'bold', marginVertical: 4 },
   role: { color: 'rgba(255,255,255,0.75)', fontSize: 13 },
   avatarContainer: {
-    width: 56, height: 56,
-    backgroundColor: '#ffffff',
-    borderRadius: 28,
+    width: 50, height: 50,
     justifyContent: 'center', alignItems: 'center',
-    elevation: 4, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6
   },
   
   floatingCard: {
