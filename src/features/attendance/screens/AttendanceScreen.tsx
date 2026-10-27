@@ -1786,7 +1786,8 @@ export function AttendanceScreen() {
                 const parts = (item.date || '').split('-');
                 const day = parts[2] || '--';
                 const monthIdx = parseInt(parts[1] || '1', 10) - 1;
-                const monthStr = MONTH_NAMES_INDONESIA[monthIdx] ? MONTH_NAMES_INDONESIA[monthIdx].substring(0, 3) : '---';
+                const fullMonthName = MONTH_NAMES_INDONESIA[monthIdx] || '';
+                const year = parts[0] || '';
                 const isToday = item.date === todayStr;
                 const hasOvertime = Boolean(item.overtime_hours && parseFloat(item.overtime_hours) > 0);
                 const hasNotes = Boolean(item.notes);
@@ -1798,6 +1799,10 @@ export function AttendanceScreen() {
                   const dObj = new Date(y, m - 1, d);
                   dayName = dObj.toLocaleDateString('id-ID', { weekday: 'long' });
                 }
+
+                const fullDateTitle = dayName && item.date
+                  ? `${dayName}, ${parseInt(day, 10)} ${fullMonthName} ${year}`
+                  : (item.date || '--');
 
                 const radiusBorderColor = item.is_within_radius === true
                   ? '#10b981'
@@ -1815,16 +1820,12 @@ export function AttendanceScreen() {
                       index === history.length - 1 && { borderBottomWidth: 0 }
                     ]}
                   >
-                    {/* Header: Tanggal & Badge Sudut */}
+                    {/* Header: Tanggal Lengkap (Tanpa Badge) & Badge Sudut Hari Ini */}
                     <View style={styles.historyCardHeader}>
                       <View style={styles.historyHeaderLeft}>
-                        <View style={[styles.historyDateBadge, isToday && styles.historyDateBadgeToday]}>
-                          <Text style={[styles.historyDateBadgeText, isToday && styles.historyDateBadgeTextToday]}>
-                            {day} {monthStr}
-                          </Text>
-                        </View>
+                        <MaterialIcons name="event" size={15} color={theme.colors.primary} style={{ marginRight: 6 }} />
                         <Text style={styles.historyDateDayName} numberOfLines={1}>
-                          {dayName}
+                          {fullDateTitle}
                         </Text>
                       </View>
 
