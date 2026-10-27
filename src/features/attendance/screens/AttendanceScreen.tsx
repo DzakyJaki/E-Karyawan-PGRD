@@ -1753,12 +1753,19 @@ export function AttendanceScreen() {
                 const hasNotes = Boolean(item.notes);
                 const showExtraRow = hasOvertime || hasNotes;
 
+                const radiusBorderColor = item.is_within_radius === true
+                  ? '#10b981'
+                  : item.is_within_radius === false
+                    ? '#ef4444'
+                    : (isToday ? theme.colors.primary : 'transparent');
+
                 return (
                   <View 
                     key={item.id || index} 
                     style={[
                       styles.listItem, 
                       isToday && styles.listItemToday,
+                      { borderLeftWidth: 4, borderLeftColor: radiusBorderColor },
                       index === history.length - 1 && { borderBottomWidth: 0 }
                     ]}
                   >
@@ -1782,21 +1789,8 @@ export function AttendanceScreen() {
                           </View>
                           <Text style={styles.timeValue}>{item.clock_in ? item.clock_in.substring(0, 5) : '--:--'}</Text>
                         </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                          {item.is_within_radius === true ? (
-                            <View style={styles.chipRadiusOk}>
-                              <MaterialIcons name="check-circle" size={10} color="#15803d" style={{ marginRight: 2 }} />
-                              <Text style={styles.chipRadiusOkText}>Radius</Text>
-                            </View>
-                          ) : item.is_within_radius === false ? (
-                            <View style={styles.chipRadiusErr}>
-                              <MaterialIcons name="wrong-location" size={10} color="#b91c1c" style={{ marginRight: 2 }} />
-                              <Text style={styles.chipRadiusErrText}>Luar</Text>
-                            </View>
-                          ) : null}
-                          <View style={[styles.statusBadge, { backgroundColor: statusInfo.bg }]}>
-                            <Text style={[styles.statusText, { color: statusInfo.text }]}>{statusInfo.label}</Text>
-                          </View>
+                        <View style={[styles.statusBadge, { backgroundColor: statusInfo.bg }]}>
+                          <Text style={[styles.statusText, { color: statusInfo.text }]}>{statusInfo.label}</Text>
                         </View>
                       </View>
 
@@ -2433,26 +2427,26 @@ const styles = StyleSheet.create({
   filterText: { fontSize: 12, fontWeight: 'bold', color: theme.colors.primary, marginRight: 4 },
 
   listContainer: { backgroundColor: theme.colors.card, borderRadius: theme.radius.m, elevation: 1, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
-  listItem: { flexDirection: 'row', alignItems: 'flex-start', padding: theme.spacing.m, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', backgroundColor: theme.colors.card },
+  listItem: { flexDirection: 'row', alignItems: 'center', padding: theme.spacing.m, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', backgroundColor: theme.colors.card },
   listItemToday: { backgroundColor: '#f8faff', borderLeftWidth: 3.5, borderLeftColor: theme.colors.primary },
   emptyText: { color: theme.colors.textMuted, marginTop: 8, fontSize: 13 },
 
   dateBadge: { 
     backgroundColor: '#f1f5f9', 
-    paddingVertical: 10, 
+    paddingVertical: 12, 
     paddingHorizontal: 8, 
     borderRadius: 10, 
     alignItems: 'center', 
     justifyContent: 'center', 
-    minWidth: 50, 
+    minWidth: 52, 
     marginRight: theme.spacing.m 
   },
   dateBadgeToday: { backgroundColor: '#e0e7ff', borderColor: '#c7d2fe', borderWidth: 1 },
-  dateBadgeDay: { fontSize: 17, fontWeight: 'bold', color: theme.colors.primary },
+  dateBadgeDay: { fontSize: 18, fontWeight: 'bold', color: theme.colors.primary, lineHeight: 22 },
   dateBadgeDayToday: { color: theme.colors.primary },
-  dateBadgeMonth: { fontSize: 10, color: theme.colors.textMuted, textTransform: 'uppercase', fontWeight: 'bold' },
+  dateBadgeMonth: { fontSize: 10, color: theme.colors.textMuted, textTransform: 'uppercase', fontWeight: 'bold', marginTop: 1 },
   dateBadgeMonthToday: { color: theme.colors.primary },
-  todayBadgeTag: { backgroundColor: theme.colors.primary, borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1, marginTop: 3, alignItems: 'center' },
+  todayBadgeTag: { backgroundColor: theme.colors.primary, borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1, marginTop: 4, alignItems: 'center' },
   todayBadgeTagText: { color: '#fff', fontSize: 7, fontWeight: 'bold' },
 
   historyContent: { flex: 1, justifyContent: 'center' },
