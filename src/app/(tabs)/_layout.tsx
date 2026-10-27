@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Tabs, router } from 'expo-router';
 import { theme } from '../../core/theme';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { View, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -60,7 +60,7 @@ export default function TabsLayout() {
         tabBarLabel: () => null,
         tabBarIcon: ({ focused }) => (
           <View style={[styles.centerButton, focused && styles.centerButtonFocused]}>
-            <MaterialIcons name="fingerprint" size={32} color="#fff" />
+            <MaterialCommunityIcons name="calendar-clock" size={32} color="#fff" />
           </View>
         )
       }} />
