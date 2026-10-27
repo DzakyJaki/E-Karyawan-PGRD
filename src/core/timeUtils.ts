@@ -65,9 +65,19 @@ export function getEffectiveScheduleForToday(workTimeData: any, targetDate: Date
     ? workTimeData.closed_days.includes(dayOfWeek)
     : false;
 
+  const isRestDay = Array.isArray(workTimeData.rest_days)
+    ? workTimeData.rest_days.includes(dayOfWeek)
+    : false;
+
   const isClosedToday = daySchedule?.is_closed != null
     ? Boolean(daySchedule.is_closed)
     : (Boolean(workTimeData.is_closed_today) || isClosedDay);
+
+  const isRestToday = daySchedule?.is_rest != null
+    ? Boolean(daySchedule.is_rest)
+    : (Boolean(workTimeData.is_rest_today) || isRestDay);
+
+  const isEffectiveClosedToday = isClosedToday || isRestToday;
 
   const rawStartTime = daySchedule?.work_start_time || workTimeData.work_start_time || '08:00';
   const rawEndTime = daySchedule?.work_end_time || workTimeData.work_end_time || '17:00';
@@ -94,6 +104,7 @@ export function getEffectiveScheduleForToday(workTimeData: any, targetDate: Date
 
   const rawDispensation = daySchedule?.dispensation_time || workTimeData.dispensation_time || null;
   const rawOvertime = daySchedule?.overtime_start_time || workTimeData.overtime_start_time || null;
+  const rawKantorBreakFrom = daySchedule?.kantor_break_from || workTimeData.kantor_break_from || null;
   const rawKantorBreakUntil = daySchedule?.kantor_break_until || workTimeData.kantor_break_until || null;
 
   const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
@@ -107,6 +118,7 @@ export function getEffectiveScheduleForToday(workTimeData: any, targetDate: Date
     work_end_time: normalizedEndTime,
     raw_work_end_time: rawEndTime,
     overtime_start_time: rawOvertime,
+    kantor_break_from: rawKantorBreakFrom,
     kantor_break_until: rawKantorBreakUntil,
     simultaneous_break_start: simultaneousStart,
     simultaneous_break_end: simultaneousEnd,
@@ -115,7 +127,8 @@ export function getEffectiveScheduleForToday(workTimeData: any, targetDate: Date
     break_shift_name: effectiveShiftName,
     break_start_time: effectiveBreakStart,
     break_end_time: effectiveBreakEnd,
-    is_closed_today: isClosedToday,
+    is_rest_today: isRestToday,
+    is_closed_today: isEffectiveClosedToday,
     is_friday: dayOfWeek === 5,
     day_of_week: dayOfWeek,
   };

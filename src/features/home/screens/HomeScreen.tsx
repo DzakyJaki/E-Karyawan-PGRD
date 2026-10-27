@@ -271,12 +271,15 @@ export function HomeScreen() {
       return `${start} - ${end} WIB`;
     }
 
-    // 2. Tipe Kantor (Fleksibel hingga batas kantor_break_until)
-    if (effectiveWork?.break_type === 'kantor' || effectiveWork?.kantor_break_until) {
+    // 2. Tipe Kantor (Jam Mulai kantor_break_from s/d batas kantor_break_until)
+    if (effectiveWork?.break_type === 'kantor' || effectiveWork?.kantor_break_until || effectiveWork?.kantor_break_from) {
+      const from = effectiveWork?.kantor_break_from
+        ? effectiveWork.kantor_break_from.substring(0, 5)
+        : '12:00';
       const until = effectiveWork?.kantor_break_until
         ? effectiveWork.kantor_break_until.substring(0, 5)
         : '15:00';
-      return `Fleksibel (Maksimal s/d ${until} WIB)`;
+      return `${from} - ${until} WIB`;
     }
 
     if (effectiveWork?.break_end_time) {
