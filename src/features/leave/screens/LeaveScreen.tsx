@@ -1302,7 +1302,7 @@ export function LeaveScreen() {
                     </View>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={styles.otherLeaveRemaining}>{item.remaining} Sisa</Text>
+                    <Text style={styles.otherLeaveRemaining}>{item.remaining} Kuota</Text>
                     <Text style={[styles.otherLeaveUnit, { color: theme.colors.warning }]}>{item.used} Terpakai</Text>
                     {Boolean(item.pending && item.pending > 0) && (
                       <Text style={{ fontSize: 10, color: '#d97706', marginTop: 2, fontWeight: '600' }}>
