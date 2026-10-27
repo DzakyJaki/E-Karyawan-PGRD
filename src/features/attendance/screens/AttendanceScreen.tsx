@@ -769,13 +769,10 @@ export function AttendanceScreen() {
 
       let isBreakExpired = false;
       let isBreakUnlocked = true;
-      let shiftBreakStartLabel = '';
       let shiftBreakEndLabel = '';
-      let kantorFromLabel = '12:00';
       let kantorUntilLabel = '15:00';
 
       if (isShift && effectiveWork?.break_start_time) {
-        shiftBreakStartLabel = effectiveWork.break_start_time.substring(0, 5);
         shiftBreakEndLabel = effectiveWork.break_end_time ? effectiveWork.break_end_time.substring(0, 5) : '';
         const startParts = effectiveWork.break_start_time.split(':');
         const endParts = (effectiveWork.break_end_time || '').split(':');
@@ -798,7 +795,7 @@ export function AttendanceScreen() {
           }
         }
       } else if (isKantor) {
-        kantorFromLabel = effectiveWork?.kantor_break_from ? effectiveWork.kantor_break_from.substring(0, 5) : '12:00';
+        const kantorFromLabel = effectiveWork?.kantor_break_from ? effectiveWork.kantor_break_from.substring(0, 5) : '12:00';
         kantorUntilLabel = effectiveWork?.kantor_break_until ? effectiveWork.kantor_break_until.substring(0, 5) : '15:00';
 
         const fromParts = kantorFromLabel.split(':');
@@ -825,16 +822,16 @@ export function AttendanceScreen() {
       // JIKA WAKTU ISTIRAHAT BELUM LEWAT:
       // Tampilkan tombol Mulai Istirahat (Aktif jika dalam rentang, atau Terkunci jika belum jamnya)
       if (!isBreakExpired) {
-        let sub = `Jadwal Istirahat: ${breakScheduleText}`;
+        let sub = isBreakUnlocked ? `Jadwal Istirahat: ${breakScheduleText}` : 'Belum Waktu Istirahat';
         if (isShift) {
           if (!isBreakUnlocked) {
-            sub = `Belum Waktu Istirahat • Jadwal: ${shiftBreakStartLabel} - ${shiftBreakEndLabel} WIB`;
+            sub = 'Belum Waktu Istirahat';
           } else {
             sub = `Rentang Shift Istirahat • s/d ${shiftBreakEndLabel} WIB`;
           }
         } else if (isKantor) {
           if (!isBreakUnlocked) {
-            sub = `Belum Waktu Istirahat • Jadwal: ${kantorFromLabel} - ${kantorUntilLabel} WIB`;
+            sub = 'Belum Waktu Istirahat';
           } else {
             sub = `Rentang Istirahat Kantor • s/d ${kantorUntilLabel} WIB`;
           }
@@ -1791,26 +1788,28 @@ export function AttendanceScreen() {
                         </View>
                       </View>
 
-                      {/* Baris Jam Istirahat (Jika Tercatat) */}
-                      {item.break_start ? (
-                        <>
-                          <View style={styles.timeDivider} />
-                          <View style={styles.timeRow}>
-                            <View style={styles.timeRowLeft}>
-                              <View style={styles.timeLabelWrap}>
-                                <View style={[styles.dot, { backgroundColor: '#d97706' }]} />
-                                <Text style={styles.timeLabel}>Istirahat</Text>
-                              </View>
-                              <Text style={styles.timeValue}>
-                                {item.break_start.substring(0, 5)} - {item.break_end ? item.break_end.substring(0, 5) : 'Rehat'}
-                              </Text>
-                            </View>
-                          </View>
-                        </>
-                      ) : null}
-
                       {/* Divider Line */}
                       <View style={styles.timeDivider} />
+
+                      {/* Baris Jam Istirahat (Selalu Ditampilkan antara Masuk dan Keluar) */}
+                      <View style={styles.timeRow}>
+                        <View style={styles.timeRowLeft}>
+                          <View style={styles.timeLabelWrap}>
+                            <View style={[styles.dot, { backgroundColor: '#d97706' }]} />
+                            <Text style={styles.timeLabel}>Istirahat</Text>
+                          </View>
+                          <Text style={styles.timeValue}>
+                            {item.break_start 
+                              ? `${item.break_start.substring(0, 5)} - ${item.break_end ? item.break_end.substring(0, 5) : 'Rehat'}` 
+                              : '--:--'}
+                          </Text>
+                        </View>
+                        {item.break_start && !item.break_end ? (
+                          <View style={[styles.statusBadge, { backgroundColor: '#fef3c7' }]}>
+                            <Text style={[styles.statusText, { color: '#92400e' }]}>Sedang Istirahat</Text>
+                          </View>
+                        ) : null}
+                      </View>
 
                       {/* Baris Jam Keluar */}
                       <View style={styles.timeRow}>
