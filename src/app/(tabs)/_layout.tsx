@@ -67,6 +67,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="salary" options={{
         title: 'Slip Gaji',
         headerShown: true,
+        headerLeft: () => null,
         tabBarIcon: ({ color }) => <MaterialIcons name="payments" size={24} color={color as string} />
       }} />
       {/* Tab Lembur disembunyikan sementara sesuai instruksi owner, kodingan tetap utuh */}

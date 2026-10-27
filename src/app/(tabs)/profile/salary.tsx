@@ -614,11 +614,8 @@ export default function SalaryScreen() {
           title: 'Slip Gaji',
           headerStyle: { backgroundColor: theme.colors.primary },
           headerTintColor: '#fff',
-          headerLeft: () => router.canGoBack() ? (
-            <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 8, marginRight: 16 }}>
-              <MaterialIcons name="arrow-back" size={24} color="#fff" />
-            </TouchableOpacity>
-          ) : null
+          headerBackVisible: false,
+          headerLeft: () => null
         }} 
       />
 

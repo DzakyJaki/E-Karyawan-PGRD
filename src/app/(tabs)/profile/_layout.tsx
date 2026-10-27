@@ -30,6 +30,8 @@ export default function ProfileLayout() {
         name="salary"
         options={{
           title: 'Slip Gaji',
+          headerBackVisible: false,
+          headerLeft: () => null,
         }}
       />
       <Stack.Screen
