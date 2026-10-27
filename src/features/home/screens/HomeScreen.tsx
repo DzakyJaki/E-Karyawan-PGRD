@@ -12,8 +12,8 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { theme } from '../../../core/theme';
 import { scheduleBreakReminders } from '../../../core/breakNotificationService';
+import { theme } from '../../../core/theme';
 import { getEffectiveScheduleForToday, normalizeTimeString } from '../../../core/timeUtils';
 
 const { width } = Dimensions.get('window');
@@ -35,10 +35,10 @@ interface TodayAttendance {
 export function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  
+
   const [refreshing, setRefreshing] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
-  
+
   // Real Database Metrics
   const [todayAttendance, setTodayAttendance] = useState<TodayAttendance | null>(null);
   const [attendanceCount, setAttendanceCount] = useState<number>(0);
@@ -54,9 +54,9 @@ export function HomeScreen() {
         return;
       }
 
-      const headers = { 
-        Authorization: `Bearer ${token}`, 
-        Accept: 'application/json' 
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json'
       };
 
       const now = new Date();
@@ -124,7 +124,7 @@ export function HomeScreen() {
 
       // Jadwalkan pengingat notifikasi istirahat 5 menit sebelum & sesudah
       if (workTimeJson && workTimeJson.data) {
-        scheduleBreakReminders(workTimeJson.data, currentTodayRec).catch(() => {});
+        scheduleBreakReminders(workTimeJson.data, currentTodayRec).catch(() => { });
       }
 
       // Handle Sisa Cuti (Hanya jenis cuti yang memiliki alokasi kuota > 0)
@@ -144,17 +144,17 @@ export function HomeScreen() {
     const loadCache = async () => {
       const cached = await AsyncStorage.getItem('fullProfile');
       if (cached) {
-        try { setProfileData(JSON.parse(cached)); } catch {}
+        try { setProfileData(JSON.parse(cached)); } catch { }
       }
       const cachedWt = await AsyncStorage.getItem('cachedWorkTime');
       if (cachedWt) {
-        try { setWorkTimeData(JSON.parse(cachedWt)); } catch {}
+        try { setWorkTimeData(JSON.parse(cachedWt)); } catch { }
       }
     };
     loadCache();
     fetchHomeScreenData();
   }, [fetchHomeScreenData]);
-  
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await fetchHomeScreenData();
@@ -285,6 +285,29 @@ export function HomeScreen() {
     }
   }, [isWorkClosedToday, effectiveWork]);
 
+  const todayBreakLate = useMemo(() => {
+    if (!todayAttendance?.break_end) return null;
+    const limit = (effectiveWork?.break_type === 'shift' || (effectiveWork?.break_start_time && effectiveWork?.break_end_time && effectiveWork?.break_type !== 'kantor'))
+      ? (effectiveWork?.break_end_time?.substring(0, 5))
+      : (effectiveWork?.kantor_break_until?.substring(0, 5) || '15:00');
+
+    if (!limit) return { isLate: false, lateMinutes: 0 };
+
+    const [endH, endM] = todayAttendance.break_end.split(':').map(Number);
+    const [limH, limM] = limit.split(':').map(Number);
+
+    if (isNaN(endH) || isNaN(endM) || isNaN(limH) || isNaN(limM)) {
+      return { isLate: false, lateMinutes: 0 };
+    }
+
+    const diffMinutes = (endH * 60 + endM) - (limH * 60 + limM);
+
+    return {
+      isLate: diffMinutes > 0,
+      lateMinutes: diffMinutes > 0 ? diffMinutes : 0
+    };
+  }, [todayAttendance, effectiveWork]);
+
   // Cek apakah waktu saat ini berada dalam rentang 5 menit sebelum / sesudah jam istirahat / masuk
   const breakProximityAlert = useMemo(() => {
     if (!effectiveWork || isWorkClosedToday || todayAttendance?.break_end) {
@@ -384,13 +407,13 @@ export function HomeScreen() {
 
   return (
     <View style={styles.rootWrapper}>
-      <ScrollView 
-        style={styles.container} 
+      <ScrollView
+        style={styles.container}
         showsVerticalScrollIndicator={false}
         bounces={true}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.colors.primary]} tintColor="#ffffff" />}
       >
-        
+
         {/* HEADER SECTION (FULL BLEED TO STATUS BAR) */}
         <View style={[styles.headerBackground, { paddingTop: Math.max(insets.top + 16, 40), minHeight: Math.max(insets.top + 16, 40) + 160 }]}>
           <View style={styles.headerContent}>
@@ -401,281 +424,281 @@ export function HomeScreen() {
                 {displayRole} {branchName ? `| ${branchName}` : ''}
               </Text>
             </View>
-          <TouchableOpacity 
-            style={styles.avatarContainer}
-            onPress={() => router.push('/(tabs)/profile')}
+            <TouchableOpacity
+              style={styles.avatarContainer}
+              onPress={() => router.push('/(tabs)/profile')}
+              activeOpacity={0.8}
+            >
+              <MaterialCommunityIcons name="account-circle" size={50} color="#ffffff" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* FLOATING ATTENDANCE CARD (SYNC REAL DATABASE) */}
+        <TouchableOpacity
+          style={styles.floatingCard}
+          onPress={() => router.push('/(tabs)/attendance')}
+          activeOpacity={0.9}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <Text style={styles.cardTitle}>Status Presensi Hari Ini</Text>
+            <View style={[styles.statusBadgeSmall, { backgroundColor: attendanceBadge.bg }]}>
+              <Text style={[styles.statusBadgeSmallText, { color: attendanceBadge.text }]}>
+                {attendanceBadge.label}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.currentDate}>{todayFormatted}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14, marginTop: -6 }}>
+            <MaterialIcons name="schedule" size={13} color={theme.colors.textMuted} style={{ marginRight: 4 }} />
+            <Text style={{ fontSize: 12, color: theme.colors.textMuted, fontWeight: '500' }}>
+              Jadwal: {todayScheduleText}
+            </Text>
+          </View>
+
+          {/* BARIS JAM UTAMA: MASUK & PULANG (LEGA & SIMETRIS) */}
+          <View style={styles.attendanceMainRow}>
+            {/* Kolom 1: Jam Masuk */}
+            <View style={styles.attendanceMainBox}>
+              <View style={[
+                styles.attendanceIconCircle,
+                { backgroundColor: todayAttendance?.clock_in ? '#dcfce7' : '#f1f5f9' }
+              ]}>
+                <MaterialIcons
+                  name="login"
+                  size={22}
+                  color={todayAttendance?.clock_in ? (todayAttendance.is_late ? '#b91c1c' : '#166534') : theme.colors.textMuted}
+                />
+              </View>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={[styles.mainTimeText, todayAttendance?.clock_in && { color: todayAttendance.is_late ? '#b91c1c' : '#166534' }]}>
+                  {checkInTime}
+                </Text>
+                <Text style={styles.mainLabel}>Jam Masuk</Text>
+                <Text style={[styles.mainSubStatus, todayAttendance?.is_late && { color: '#b91c1c', fontWeight: 'bold' }]} numberOfLines={1}>
+                  {todayAttendance?.clock_in
+                    ? (todayAttendance.is_late ? `Telat ${todayAttendance.late_minutes ? `${todayAttendance.late_minutes}m` : ''}` : 'Tepat Waktu')
+                    : (isWorkClosedToday ? 'Toko Tutup' : 'Belum Check In')}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.mainDivider} />
+
+            {/* Kolom 2: Jam Pulang */}
+            <View style={styles.attendanceMainBox}>
+              <View style={[
+                styles.attendanceIconCircle,
+                { backgroundColor: todayAttendance?.clock_out ? '#fee2e2' : '#f1f5f9' }
+              ]}>
+                <MaterialIcons
+                  name="logout"
+                  size={22}
+                  color={todayAttendance?.clock_out ? '#e11d48' : theme.colors.textMuted}
+                />
+              </View>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={[styles.mainTimeText, todayAttendance?.clock_out && { color: '#e11d48' }]}>
+                  {checkOutTime}
+                </Text>
+                <Text style={styles.mainLabel}>Jam Pulang</Text>
+                <Text style={[styles.mainSubStatus, todayAttendance?.is_early_leave && { color: '#b45309', fontWeight: 'bold' }]} numberOfLines={1}>
+                  {todayAttendance?.clock_out
+                    ? (todayAttendance.is_early_leave ? `Cepat ${todayAttendance.early_leave_minutes ? `${todayAttendance.early_leave_minutes}m` : ''}` : 'Selesai Kerja')
+                    : 'Belum Pulang'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* STRIP PRESENSI ISTIRAHAT: JAM ABSEN KELUAR & MASUK KEMBALI */}
+          <View style={styles.homeBreakStrip}>
+            <View style={styles.homeBreakIconWrap}>
+              <MaterialIcons name="free-breakfast" size={17} color="#d97706" />
+            </View>
+            <View style={{ flex: 1, paddingRight: 6 }}>
+              <Text style={styles.homeBreakTitle}>Absensi Istirahat</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
+                <Text style={styles.homeBreakLabel}>Mulai: </Text>
+                <Text style={styles.homeBreakTimeBold}>
+                  {todayAttendance?.break_start ? `${todayAttendance.break_start.substring(0, 5)} WIB` : '--:--'}
+                </Text>
+                <Text style={[styles.homeBreakLabel, { marginLeft: 12 }]}>Selesai: </Text>
+                <Text style={styles.homeBreakTimeBold}>
+                  {todayAttendance?.break_end ? `${todayAttendance.break_end.substring(0, 5)} WIB` : '--:--'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Badge Status Istirahat */}
+            <View style={[
+              styles.homeBreakStatusBadge,
+              todayAttendance?.break_end
+                ? (todayBreakLate?.isLate ? { backgroundColor: '#fee2e2' } : { backgroundColor: '#dcfce7' })
+                : todayAttendance?.break_start
+                  ? { backgroundColor: '#fef3c7' }
+                  : { backgroundColor: '#f1f5f9' }
+            ]}>
+              <Text style={[
+                styles.homeBreakStatusText,
+                todayAttendance?.break_end
+                  ? (todayBreakLate?.isLate ? { color: '#991b1b' } : { color: '#166534' })
+                  : todayAttendance?.break_start
+                    ? { color: '#92400e' }
+                    : { color: theme.colors.textMuted }
+              ]}>
+                {todayAttendance?.break_end
+                  ? (todayBreakLate?.isLate ? `Telat ${todayBreakLate.lateMinutes}m` : 'Selesai')
+                  : todayAttendance?.break_start
+                    ? 'Rehat'
+                    : 'Belum'}
+              </Text>
+            </View>
+          </View>
+
+          {!isBranchLocationConfigured ? (
+            <View style={styles.homeLocationWarningBanner}>
+              <MaterialIcons name="error-outline" size={15} color="#b91c1c" style={{ marginRight: 6 }} />
+              <Text style={styles.homeLocationWarningText}>
+                Titik GPS atau radius cabang belum dikonfigurasi Admin. Presensi dinonaktifkan.
+              </Text>
+            </View>
+          ) : null}
+
+          {/* PENGINGAT 5 MENIT SEBELUM / SESUDAH ISTIRAHAT */}
+          {breakProximityAlert ? (
+            <View style={[styles.homeProximityAlert, { backgroundColor: breakProximityAlert.bgColor, borderColor: breakProximityAlert.borderColor }]}>
+              <MaterialIcons name="notifications-active" size={16} color={breakProximityAlert.color} style={{ marginRight: 8 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.homeProximityTitle, { color: breakProximityAlert.color }]}>
+                  {breakProximityAlert.title}
+                </Text>
+                <Text style={styles.homeProximityDesc}>
+                  {breakProximityAlert.message}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          <View style={styles.tapToAttendPrompt}>
+            <Text style={styles.tapToAttendText}>
+              {!isBranchLocationConfigured ? 'Buka menu presensi (Perlu pengaturan admin)' : 'Tekan untuk buka menu presensi GPS'}
+            </Text>
+            <MaterialIcons name="chevron-right" size={18} color={theme.colors.primary} />
+          </View>
+        </TouchableOpacity>
+
+        {/* QUICK STATS RINGKASAN DATABASE */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <View style={[styles.statIconWrap, { backgroundColor: '#dcfce7' }]}>
+              <MaterialIcons name="event-available" size={20} color="#166534" />
+            </View>
+            <Text style={styles.statValue}>{attendanceCount} Hari</Text>
+            <Text style={styles.statLabel}>Hadir Bulan Ini</Text>
+          </View>
+
+          <View style={styles.statCard}>
+            <View style={[styles.statIconWrap, { backgroundColor: '#eff6ff' }]}>
+              <MaterialIcons name="beach-access" size={20} color={theme.colors.primary} />
+            </View>
+            <Text style={styles.statValue}>{remainingLeave} Hari</Text>
+            <Text style={styles.statLabel}>Sisa Cuti</Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.statCard}
+            onPress={() => router.push('/(tabs)/salary')}
             activeOpacity={0.8}
           >
-            <MaterialCommunityIcons name="account-circle" size={50} color="#ffffff" />
+            <View style={[styles.statIconWrap, { backgroundColor: '#fef3c7' }]}>
+              <MaterialIcons name="payments" size={20} color="#b45309" />
+            </View>
+            <Text style={styles.statValue}>Bulan Ini</Text>
+            <Text style={styles.statLabel}>Slip Gaji</Text>
           </TouchableOpacity>
         </View>
-      </View>
 
-      {/* FLOATING ATTENDANCE CARD (SYNC REAL DATABASE) */}
-      <TouchableOpacity 
-        style={styles.floatingCard}
-        onPress={() => router.push('/(tabs)/attendance')}
-        activeOpacity={0.9}
-      >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <Text style={styles.cardTitle}>Status Presensi Hari Ini</Text>
-          <View style={[styles.statusBadgeSmall, { backgroundColor: attendanceBadge.bg }]}>
-            <Text style={[styles.statusBadgeSmallText, { color: attendanceBadge.text }]}>
-              {attendanceBadge.label}
-            </Text>
+        {/* QUICK MENU GRID */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Menu Cepat</Text>
+          <View style={styles.menuGrid}>
+            <MenuButton icon="calendar-month" color={theme.colors.primaryLight} label="Pengajuan Cuti" route="/(tabs)/leave" router={router} />
+            {/* Menu Lembur disembunyikan sementara sesuai instruksi owner, kodingan tetap disimpan: */}
+            {/* <MenuButton icon="schedule" color={theme.colors.warning} label="Form Lembur" route="/(tabs)/overtime" router={router} /> */}
+            <MenuButton icon="assignment-ind" color={theme.colors.warning} label="Data Karyawan" route="/profile/employee-data" router={router} />
+            <MenuButton icon="payments" color={theme.colors.success} label="Slip Gaji" route="/(tabs)/salary" router={router} />
+            <MenuButton icon="history" color={theme.colors.secondary} label="Riwayat Absen" route="/(tabs)/attendance" router={router} />
           </View>
         </View>
 
-        <Text style={styles.currentDate}>{todayFormatted}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14, marginTop: -6 }}>
-          <MaterialIcons name="schedule" size={13} color={theme.colors.textMuted} style={{ marginRight: 4 }} />
-          <Text style={{ fontSize: 12, color: theme.colors.textMuted, fontWeight: '500' }}>
-            Jadwal: {todayScheduleText}
-          </Text>
-        </View>
-        
-        {/* BARIS JAM UTAMA: MASUK & PULANG (LEGA & SIMETRIS) */}
-        <View style={styles.attendanceMainRow}>
-          {/* Kolom 1: Jam Masuk */}
-          <View style={styles.attendanceMainBox}>
-            <View style={[
-              styles.attendanceIconCircle, 
-              { backgroundColor: todayAttendance?.clock_in ? '#dcfce7' : '#f1f5f9' }
-            ]}>
-              <MaterialIcons 
-                name="login" 
-                size={22} 
-                color={todayAttendance?.clock_in ? (todayAttendance.is_late ? '#b91c1c' : '#166534') : theme.colors.textMuted} 
-              />
-            </View>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={[styles.mainTimeText, todayAttendance?.clock_in && { color: todayAttendance.is_late ? '#b91c1c' : '#166534' }]}>
-                {checkInTime}
-              </Text>
-              <Text style={styles.mainLabel}>Jam Masuk</Text>
-              <Text style={[styles.mainSubStatus, todayAttendance?.is_late && { color: '#b91c1c', fontWeight: 'bold' }]} numberOfLines={1}>
-                {todayAttendance?.clock_in 
-                  ? (todayAttendance.is_late ? `Telat ${todayAttendance.late_minutes ? `${todayAttendance.late_minutes}m` : ''}` : 'Tepat Waktu')
-                  : (isWorkClosedToday ? 'Toko Tutup' : 'Belum Check In')}
-              </Text>
-            </View>
-          </View>
-          
-          <View style={styles.mainDivider} />
-          
-          {/* Kolom 2: Jam Pulang */}
-          <View style={styles.attendanceMainBox}>
-            <View style={[
-              styles.attendanceIconCircle, 
-              { backgroundColor: todayAttendance?.clock_out ? '#fee2e2' : '#f1f5f9' }
-            ]}>
-              <MaterialIcons 
-                name="logout" 
-                size={22} 
-                color={todayAttendance?.clock_out ? '#e11d48' : theme.colors.textMuted} 
-              />
-            </View>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={[styles.mainTimeText, todayAttendance?.clock_out && { color: '#e11d48' }]}>
-                {checkOutTime}
-              </Text>
-              <Text style={styles.mainLabel}>Jam Pulang</Text>
-              <Text style={[styles.mainSubStatus, todayAttendance?.is_early_leave && { color: '#b45309', fontWeight: 'bold' }]} numberOfLines={1}>
-                {todayAttendance?.clock_out 
-                  ? (todayAttendance.is_early_leave ? `Cepat ${todayAttendance.early_leave_minutes ? `${todayAttendance.early_leave_minutes}m` : ''}` : 'Selesai Kerja')
-                  : 'Belum Pulang'}
-              </Text>
-            </View>
-          </View>
-        </View>
+        {/* COMPANY RULES / ATURAN PEKERJAAN */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Aturan Pekerjaan</Text>
 
-        {/* STRIP PRESENSI ISTIRAHAT: JAM ABSEN KELUAR & MASUK KEMBALI */}
-        <View style={styles.homeBreakStrip}>
-          <View style={styles.homeBreakIconWrap}>
-            <MaterialIcons name="free-breakfast" size={17} color="#d97706" />
-          </View>
-          <View style={{ flex: 1, paddingRight: 6 }}>
-            <Text style={styles.homeBreakTitle}>Absensi Istirahat</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
-              <Text style={styles.homeBreakLabel}>Mulai: </Text>
-              <Text style={styles.homeBreakTimeBold}>
-                {todayAttendance?.break_start ? `${todayAttendance.break_start.substring(0, 5)} WIB` : '--:--'}
-              </Text>
-              <Text style={[styles.homeBreakLabel, { marginLeft: 12 }]}>Masuk: </Text>
-              <Text style={styles.homeBreakTimeBold}>
-                {todayAttendance?.break_end ? `${todayAttendance.break_end.substring(0, 5)} WIB` : '--:--'}
-              </Text>
+          <View style={styles.combinedCard}>
+            <View style={styles.ruleItem}>
+              <View style={[styles.iconWrap, { backgroundColor: '#E0E7FF' }]}>
+                <MaterialIcons name="access-time" size={24} color={theme.colors.primary} />
+              </View>
+              <View style={styles.infoTextContainer}>
+                <Text style={styles.infoTitle}>Jam Kerja Hari Ini</Text>
+                <Text style={styles.infoSubtitle}>
+                  {todayScheduleText}
+                </Text>
+              </View>
             </View>
-          </View>
-          
-          {/* Badge Status Istirahat */}
-          <View style={[
-            styles.homeBreakStatusBadge,
-            todayAttendance?.break_end
-              ? { backgroundColor: '#dcfce7' }
-              : todayAttendance?.break_start
-                ? { backgroundColor: '#fef3c7' }
-                : { backgroundColor: '#f1f5f9' }
-          ]}>
-            <Text style={[
-              styles.homeBreakStatusText,
-              todayAttendance?.break_end
-                ? { color: '#166534' }
-                : todayAttendance?.break_start
-                  ? { color: '#92400e' }
-                  : { color: theme.colors.textMuted }
-            ]}>
-              {todayAttendance?.break_end
-                ? 'Selesai'
-                : todayAttendance?.break_start
-                  ? 'Rehat'
-                  : 'Belum'}
-            </Text>
+
+            <View style={styles.cardDivider} />
+
+            {/* JADWAL WAKTU ISTIRAHAT KERJA */}
+            <View style={styles.ruleItem}>
+              <View style={[styles.iconWrap, { backgroundColor: '#FEF3C7' }]}>
+                <MaterialIcons name="free-breakfast" size={24} color="#d97706" />
+              </View>
+              <View style={styles.infoTextContainer}>
+                <Text style={styles.infoTitle}>
+                  {workTimeData?.break_type === 'shift'
+                    ? 'Waktu Istirahat Shift'
+                    : workTimeData?.break_type === 'kantor'
+                      ? 'Waktu Istirahat Kantor'
+                      : 'Waktu Istirahat Kerja'}
+                </Text>
+                <Text style={styles.infoSubtitle}>
+                  {todayBreakScheduleText}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.cardDivider} />
+
+            <View style={styles.ruleItem}>
+              <View style={[styles.iconWrap, { backgroundColor: '#FEF3C7' }]}>
+                <MaterialIcons name="checkroom" size={24} color={theme.colors.warning} />
+              </View>
+              <View style={styles.infoTextContainer}>
+                <Text style={styles.infoTitle}>Tata Tertib Pakaian</Text>
+                <Text style={styles.infoSubtitle}>Seragam kerja pada hari Senin-Rabu</Text>
+              </View>
+            </View>
+
+            <View style={styles.cardDivider} />
+
+            <View style={styles.ruleItem}>
+              <View style={[styles.iconWrap, { backgroundColor: '#D1FAE5' }]}>
+                <MaterialIcons name="health-and-safety" size={24} color={theme.colors.success} />
+              </View>
+              <View style={styles.infoTextContainer}>
+                <Text style={styles.infoTitle}>K3 & Keselamatan</Text>
+                <Text style={styles.infoSubtitle}>Wajib memakai APD di area kerja/proyek</Text>
+              </View>
+            </View>
           </View>
         </View>
 
-        {!isBranchLocationConfigured ? (
-          <View style={styles.homeLocationWarningBanner}>
-            <MaterialIcons name="error-outline" size={15} color="#b91c1c" style={{ marginRight: 6 }} />
-            <Text style={styles.homeLocationWarningText}>
-              Titik GPS atau radius cabang belum dikonfigurasi Admin. Presensi dinonaktifkan.
-            </Text>
-          </View>
-        ) : null}
-
-        {/* PENGINGAT 5 MENIT SEBELUM / SESUDAH ISTIRAHAT */}
-        {breakProximityAlert ? (
-          <View style={[styles.homeProximityAlert, { backgroundColor: breakProximityAlert.bgColor, borderColor: breakProximityAlert.borderColor }]}>
-            <MaterialIcons name="notifications-active" size={16} color={breakProximityAlert.color} style={{ marginRight: 8 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.homeProximityTitle, { color: breakProximityAlert.color }]}>
-                {breakProximityAlert.title}
-              </Text>
-              <Text style={styles.homeProximityDesc}>
-                {breakProximityAlert.message}
-              </Text>
-            </View>
-          </View>
-        ) : null}
-
-        <View style={styles.tapToAttendPrompt}>
-          <Text style={styles.tapToAttendText}>
-            {!isBranchLocationConfigured ? 'Buka menu presensi (Perlu pengaturan admin)' : 'Tekan untuk buka menu presensi GPS'}
-          </Text>
-          <MaterialIcons name="chevron-right" size={18} color={theme.colors.primary} />
-        </View>
-      </TouchableOpacity>
-
-      {/* QUICK STATS RINGKASAN DATABASE */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <View style={[styles.statIconWrap, { backgroundColor: '#dcfce7' }]}>
-            <MaterialIcons name="event-available" size={20} color="#166534" />
-          </View>
-          <Text style={styles.statValue}>{attendanceCount} Hari</Text>
-          <Text style={styles.statLabel}>Hadir Bulan Ini</Text>
-        </View>
-
-        <View style={styles.statCard}>
-          <View style={[styles.statIconWrap, { backgroundColor: '#eff6ff' }]}>
-            <MaterialIcons name="beach-access" size={20} color={theme.colors.primary} />
-          </View>
-          <Text style={styles.statValue}>{remainingLeave} Hari</Text>
-          <Text style={styles.statLabel}>Sisa Cuti</Text>
-        </View>
-
-        <TouchableOpacity 
-          style={styles.statCard}
-          onPress={() => router.push('/(tabs)/salary')}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.statIconWrap, { backgroundColor: '#fef3c7' }]}>
-            <MaterialIcons name="payments" size={20} color="#b45309" />
-          </View>
-          <Text style={styles.statValue}>Bulan Ini</Text>
-          <Text style={styles.statLabel}>Slip Gaji</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* QUICK MENU GRID */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Menu Cepat</Text>
-        <View style={styles.menuGrid}>
-          <MenuButton icon="calendar-month" color={theme.colors.primaryLight} label="Pengajuan Cuti" route="/(tabs)/leave" router={router} />
-          {/* Menu Lembur disembunyikan sementara sesuai instruksi owner, kodingan tetap disimpan: */}
-          {/* <MenuButton icon="schedule" color={theme.colors.warning} label="Form Lembur" route="/(tabs)/overtime" router={router} /> */}
-          <MenuButton icon="assignment-ind" color={theme.colors.warning} label="Data Karyawan" route="/profile/employee-data" router={router} />
-          <MenuButton icon="payments" color={theme.colors.success} label="Slip Gaji" route="/(tabs)/salary" router={router} />
-          <MenuButton icon="history" color={theme.colors.secondary} label="Riwayat Absen" route="/(tabs)/attendance" router={router} />
-        </View>
-      </View>
-
-      {/* COMPANY RULES / ATURAN PEKERJAAN */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Aturan Pekerjaan</Text>
-        
-        <View style={styles.combinedCard}>
-          <View style={styles.ruleItem}>
-            <View style={[styles.iconWrap, { backgroundColor: '#E0E7FF' }]}>
-              <MaterialIcons name="access-time" size={24} color={theme.colors.primary} />
-            </View>
-            <View style={styles.infoTextContainer}>
-              <Text style={styles.infoTitle}>Jam Kerja Hari Ini</Text>
-              <Text style={styles.infoSubtitle}>
-                {todayScheduleText}
-              </Text>
-            </View>
-          </View>
-          
-          <View style={styles.cardDivider} />
-
-          {/* JADWAL WAKTU ISTIRAHAT KERJA */}
-          <View style={styles.ruleItem}>
-            <View style={[styles.iconWrap, { backgroundColor: '#FEF3C7' }]}>
-              <MaterialIcons name="free-breakfast" size={24} color="#d97706" />
-            </View>
-            <View style={styles.infoTextContainer}>
-              <Text style={styles.infoTitle}>
-                {workTimeData?.break_type === 'shift'
-                  ? 'Waktu Istirahat Shift'
-                  : workTimeData?.break_type === 'kantor'
-                    ? 'Waktu Istirahat Kantor'
-                    : 'Waktu Istirahat Kerja'}
-              </Text>
-              <Text style={styles.infoSubtitle}>
-                {todayBreakScheduleText}
-              </Text>
-            </View>
-          </View>
-          
-          <View style={styles.cardDivider} />
-
-          <View style={styles.ruleItem}>
-            <View style={[styles.iconWrap, { backgroundColor: '#FEF3C7' }]}>
-              <MaterialIcons name="checkroom" size={24} color={theme.colors.warning} />
-            </View>
-            <View style={styles.infoTextContainer}>
-              <Text style={styles.infoTitle}>Tata Tertib Pakaian</Text>
-              <Text style={styles.infoSubtitle}>Seragam kerja pada hari Senin-Rabu</Text>
-            </View>
-          </View>
-
-          <View style={styles.cardDivider} />
-
-          <View style={styles.ruleItem}>
-            <View style={[styles.iconWrap, { backgroundColor: '#D1FAE5' }]}>
-              <MaterialIcons name="health-and-safety" size={24} color={theme.colors.success} />
-            </View>
-            <View style={styles.infoTextContainer}>
-              <Text style={styles.infoTitle}>K3 & Keselamatan</Text>
-              <Text style={styles.infoSubtitle}>Wajib memakai APD di area kerja/proyek</Text>
-            </View>
-          </View>
-        </View>
-      </View>
-      
-      <View style={{ height: 40 }} />
-    </ScrollView>
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </View>
   );
 }
@@ -713,7 +736,7 @@ const styles = StyleSheet.create({
     width: 50, height: 50,
     justifyContent: 'center', alignItems: 'center',
   },
-  
+
   floatingCard: {
     backgroundColor: '#ffffff',
     marginHorizontal: theme.spacing.l,
@@ -828,7 +851,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: 'bold'
   },
-  
+
   homeLocationWarningBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -911,12 +934,12 @@ const styles = StyleSheet.create({
 
   section: { paddingHorizontal: theme.spacing.l, marginTop: theme.spacing.xl },
   sectionTitle: { fontSize: 17, fontWeight: 'bold', color: theme.colors.text, marginBottom: theme.spacing.m },
-  
+
   menuGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   menuButton: { width: (width - 48) / 4, alignItems: 'center', marginBottom: theme.spacing.m },
   menuIconCircle: { width: 54, height: 54, borderRadius: 27, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   menuLabel: { fontSize: 12, color: theme.colors.text, textAlign: 'center', fontWeight: '500' },
-  
+
   combinedCard: {
     backgroundColor: '#ffffff',
     borderRadius: theme.radius.m,

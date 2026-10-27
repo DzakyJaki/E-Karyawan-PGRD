@@ -1327,6 +1327,44 @@ export function AttendanceScreen() {
     return { bg: '#f1f5f9', text: '#475569', label: status || 'Hadir' };
   };
 
+  const getBreakLateInfo = (breakEnd?: string | null) => {
+    if (!breakEnd) return null;
+    const limit = (effectiveWork?.break_type === 'shift' || (effectiveWork?.break_start_time && effectiveWork?.break_end_time && effectiveWork?.break_type !== 'kantor'))
+      ? (effectiveWork?.break_end_time?.substring(0, 5))
+      : (effectiveWork?.kantor_break_until?.substring(0, 5) || '15:00');
+
+    if (!limit) return { isLate: false, lateMinutes: 0 };
+
+    const [endH, endM] = breakEnd.split(':').map(Number);
+    const [limH, limM] = limit.split(':').map(Number);
+
+    if (isNaN(endH) || isNaN(endM) || isNaN(limH) || isNaN(limM)) {
+      return { isLate: false, lateMinutes: 0 };
+    }
+
+    const diffMinutes = (endH * 60 + endM) - (limH * 60 + limM);
+
+    return {
+      isLate: diffMinutes > 0,
+      lateMinutes: diffMinutes > 0 ? diffMinutes : 0
+    };
+  };
+
+  const formatDurationBadge = (minutes?: number | null, prefix = 'Telat') => {
+    if (!minutes || minutes <= 0) return prefix === 'Telat' ? 'Terlambat' : prefix;
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if (h > 0 && m > 0) {
+      return `${prefix} ${h}j ${m}m`;
+    }
+    if (h > 0) {
+      return `${prefix} ${h} jam`;
+    }
+    return `${prefix} ${m}m`;
+  };
+
+  const todayBreakLate = getBreakLateInfo(todayRecord?.break_end);
+
   const formattedTime = time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const formattedDate = time.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -1529,7 +1567,7 @@ export function AttendanceScreen() {
                 <View style={[
                   styles.breakStatusBadge,
                   todayRecord?.break_end
-                    ? { backgroundColor: '#dcfce7' }
+                    ? (todayBreakLate?.isLate ? { backgroundColor: '#fee2e2' } : { backgroundColor: '#dcfce7' })
                     : todayRecord?.break_start
                       ? { backgroundColor: '#fef3c7' }
                       : { backgroundColor: '#f1f5f9' }
@@ -1537,7 +1575,7 @@ export function AttendanceScreen() {
                   <View style={[
                     styles.breakStatusDot,
                     todayRecord?.break_end
-                      ? { backgroundColor: '#16a34a' }
+                      ? (todayBreakLate?.isLate ? { backgroundColor: '#dc2626' } : { backgroundColor: '#16a34a' })
                       : todayRecord?.break_start
                         ? { backgroundColor: '#d97706' }
                         : { backgroundColor: '#94a3b8' }
@@ -1545,13 +1583,13 @@ export function AttendanceScreen() {
                   <Text style={[
                     styles.breakStatusBadgeText,
                     todayRecord?.break_end
-                      ? { color: '#166534' }
+                      ? (todayBreakLate?.isLate ? { color: '#991b1b' } : { color: '#166534' })
                       : todayRecord?.break_start
                         ? { color: '#92400e' }
                         : { color: '#64748b' }
                   ]}>
                     {todayRecord?.break_end
-                      ? 'Selesai'
+                      ? (todayBreakLate?.isLate ? `Telat ${todayBreakLate.lateMinutes}m` : 'Selesai')
                       : todayRecord?.break_start
                         ? 'Rehat'
                         : 'Belum'}
@@ -1744,6 +1782,7 @@ export function AttendanceScreen() {
             ) : (
               history.map((item, index) => {
                 const statusInfo = getStatusColor(item.status, item);
+                const breakLateInfo = getBreakLateInfo(item.break_end);
                 const parts = (item.date || '').split('-');
                 const day = parts[2] || '--';
                 const monthIdx = parseInt(parts[1] || '1', 10) - 1;
@@ -1752,6 +1791,13 @@ export function AttendanceScreen() {
                 const hasOvertime = Boolean(item.overtime_hours && parseFloat(item.overtime_hours) > 0);
                 const hasNotes = Boolean(item.notes);
                 const showExtraRow = hasOvertime || hasNotes;
+
+                let dayName = '';
+                if (item.date) {
+                  const [y, m, d] = item.date.split('-').map(Number);
+                  const dObj = new Date(y, m - 1, d);
+                  dayName = dObj.toLocaleDateString('id-ID', { weekday: 'long' });
+                }
 
                 const radiusBorderColor = item.is_within_radius === true
                   ? '#10b981'
@@ -1769,92 +1815,157 @@ export function AttendanceScreen() {
                       index === history.length - 1 && { borderBottomWidth: 0 }
                     ]}
                   >
-                    <View style={[styles.dateBadge, isToday && styles.dateBadgeToday]}>
-                      <Text style={[styles.dateBadgeDay, isToday && styles.dateBadgeDayToday]}>{day}</Text>
-                      <Text style={[styles.dateBadgeMonth, isToday && styles.dateBadgeMonthToday]}>{monthStr}</Text>
-                      {isToday && (
-                        <View style={styles.todayBadgeTag}>
-                          <Text style={styles.todayBadgeTagText}>HARI INI</Text>
+                    {/* Header: Tanggal & Badge Sudut */}
+                    <View style={styles.historyCardHeader}>
+                      <View style={styles.historyHeaderLeft}>
+                        <View style={[styles.historyDateBadge, isToday && styles.historyDateBadgeToday]}>
+                          <Text style={[styles.historyDateBadgeText, isToday && styles.historyDateBadgeTextToday]}>
+                            {day} {monthStr}
+                          </Text>
                         </View>
-                      )}
-                    </View>
+                        <Text style={styles.historyDateDayName} numberOfLines={1}>
+                          {dayName}
+                        </Text>
+                      </View>
 
-                    <View style={styles.historyContent}>
-                      {/* Baris Jam Masuk */}
-                      <View style={styles.timeRow}>
-                        <View style={styles.timeRowLeft}>
-                          <View style={styles.timeLabelWrap}>
-                            <View style={[styles.dot, { backgroundColor: theme.colors.success }]} />
-                            <Text style={styles.timeLabel}>Masuk</Text>
-                          </View>
-                          <Text style={styles.timeValue}>{item.clock_in ? item.clock_in.substring(0, 5) : '--:--'}</Text>
+                      {isToday ? (
+                        <View style={[styles.statusBadge, { backgroundColor: '#e0e7ff', borderColor: '#c7d2fe', borderWidth: 1 }]}>
+                          <Text style={[styles.statusText, { color: theme.colors.primary }]}>Hari Ini</Text>
                         </View>
+                      ) : statusInfo.label !== 'Tepat Waktu' ? (
                         <View style={[styles.statusBadge, { backgroundColor: statusInfo.bg }]}>
                           <Text style={[styles.statusText, { color: statusInfo.text }]}>{statusInfo.label}</Text>
                         </View>
-                      </View>
-
-                      {/* Divider Line */}
-                      <View style={styles.timeDivider} />
-
-                      {/* Baris Jam Istirahat (Selalu Ditampilkan antara Masuk dan Keluar) */}
-                      <View style={styles.timeRow}>
-                        <View style={styles.timeRowLeft}>
-                          <View style={styles.timeLabelWrap}>
-                            <View style={[styles.dot, { backgroundColor: '#f59e0b' }]} />
-                            <Text style={styles.timeLabel}>Istirahat</Text>
-                          </View>
-                          <Text style={styles.timeValue}>
-                            {item.break_start 
-                              ? `${item.break_start.substring(0, 5)}${item.break_end ? ` - ${item.break_end.substring(0, 5)}` : ''}` 
-                              : '--:--'}
-                          </Text>
-                        </View>
-                        {item.break_start && !item.break_end ? (
-                          <View style={[styles.statusBadge, { backgroundColor: '#fef3c7' }]}>
-                            <Text style={[styles.statusText, { color: '#92400e' }]}>Sedang Istirahat</Text>
-                          </View>
-                        ) : null}
-                      </View>
-
-                      {/* Divider Line */}
-                      <View style={styles.timeDivider} />
-
-                      {/* Baris Jam Keluar */}
-                      <View style={styles.timeRow}>
-                        <View style={styles.timeRowLeft}>
-                          <View style={styles.timeLabelWrap}>
-                            <View style={[styles.dot, { backgroundColor: theme.colors.danger }]} />
-                            <Text style={styles.timeLabel}>Keluar</Text>
-                          </View>
-                          <Text style={styles.timeValue}>{item.clock_out ? item.clock_out.substring(0, 5) : '--:--'}</Text>
-                        </View>
-                        {item.clock_out && item.is_early_leave ? (
-                          <View style={[styles.statusBadge, { backgroundColor: '#fef3c7' }]}>
-                            <Text style={[styles.statusText, { color: '#b45309' }]}>Pulang Awal</Text>
-                          </View>
-                        ) : null}
-                      </View>
-
-                      {/* Chips Info Tambahan (Lembur, Catatan) */}
-                      {showExtraRow && (
-                        <View style={styles.historyChipsRow}>
-                          {hasOvertime ? (
-                            <View style={styles.chipOvertime}>
-                              <MaterialIcons name="more-time" size={11} color="#3730a3" style={{ marginRight: 3 }} />
-                              <Text style={styles.chipOvertimeText}>Lembur {parseFloat(item.overtime_hours!).toFixed(1)} Jam</Text>
-                            </View>
-                          ) : null}
-
-                          {hasNotes ? (
-                            <View style={styles.chipNotes}>
-                              <MaterialIcons name="notes" size={11} color={theme.colors.textMuted} style={{ marginRight: 3 }} />
-                              <Text style={styles.chipNotesText} numberOfLines={1}>{item.notes}</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                      )}
+                      ) : null}
                     </View>
+
+                    {/* Grid 4 Kolom Sejajar: Masuk | Mulai Ist. | Selesai Ist. | Pulang */}
+                    <View style={styles.historyGridRow}>
+                      {/* Kolom 1: Masuk */}
+                      <View style={[
+                        styles.timeGridCol,
+                        item.clock_in && item.is_late && { backgroundColor: '#fef2f2', borderColor: '#fecaca', borderWidth: 1 }
+                      ]}>
+                        <View style={styles.timeGridColHeader}>
+                          <View style={[styles.gridDot, { backgroundColor: theme.colors.success }]} />
+                          <Text style={styles.gridLabel} numberOfLines={1}>Masuk</Text>
+                        </View>
+                        <Text style={[
+                          styles.gridTime,
+                          item.clock_in && item.is_late && { color: '#dc2626' }
+                        ]}>
+                          {item.clock_in ? item.clock_in.substring(0, 5) : '--:--'}
+                        </Text>
+                        <Text style={[
+                          styles.gridSubText,
+                          item.clock_in
+                            ? (item.is_late ? { color: '#dc2626' } : { color: '#16a34a' })
+                            : { color: theme.colors.textMuted }
+                        ]} numberOfLines={1}>
+                          {item.clock_in
+                            ? (item.is_late ? formatDurationBadge(item.late_minutes, 'Telat') : 'Tepat Waktu')
+                            : '--'}
+                        </Text>
+                      </View>
+
+                      {/* Kolom 2: Mulai Istirahat */}
+                      <View style={styles.timeGridCol}>
+                        <View style={styles.timeGridColHeader}>
+                          <View style={[styles.gridDot, { backgroundColor: '#f59e0b' }]} />
+                          <Text style={styles.gridLabel} numberOfLines={1}>Mulai Ist.</Text>
+                        </View>
+                        <Text style={styles.gridTime}>
+                          {item.break_start ? item.break_start.substring(0, 5) : '--:--'}
+                        </Text>
+                        <Text style={[
+                          styles.gridSubText,
+                          item.break_start ? { color: '#16a34a' } : { color: theme.colors.textMuted }
+                        ]} numberOfLines={1}>
+                          {item.break_start ? 'Tepat Waktu' : '--'}
+                        </Text>
+                      </View>
+
+                      {/* Kolom 3: Selesai Istirahat */}
+                      <View style={[
+                        styles.timeGridCol,
+                        item.break_end && breakLateInfo?.isLate
+                          ? { backgroundColor: '#fef2f2', borderColor: '#fecaca', borderWidth: 1 }
+                          : item.break_start && !item.break_end
+                            ? { backgroundColor: '#fffbeb', borderColor: '#fef3c7', borderWidth: 1 }
+                            : null
+                      ]}>
+                        <View style={styles.timeGridColHeader}>
+                          <View style={[styles.gridDot, { backgroundColor: '#0ea5e9' }]} />
+                          <Text style={styles.gridLabel} numberOfLines={1}>Selesai Ist.</Text>
+                        </View>
+                        <Text style={[
+                          styles.gridTime,
+                          item.break_end && breakLateInfo?.isLate && { color: '#dc2626' }
+                        ]}>
+                          {item.break_end ? item.break_end.substring(0, 5) : '--:--'}
+                        </Text>
+                        <Text style={[
+                          styles.gridSubText,
+                          item.break_end
+                            ? (breakLateInfo?.isLate ? { color: '#dc2626' } : { color: '#16a34a' })
+                            : item.break_start
+                              ? { color: '#b45309' }
+                              : { color: theme.colors.textMuted }
+                        ]} numberOfLines={1}>
+                          {item.break_end
+                            ? (breakLateInfo?.isLate ? formatDurationBadge(breakLateInfo.lateMinutes, 'Telat') : 'Tepat Waktu')
+                            : item.break_start
+                              ? 'Rehat'
+                              : '--'}
+                        </Text>
+                      </View>
+
+                      {/* Kolom 4: Pulang */}
+                      <View style={[
+                        styles.timeGridCol,
+                        item.clock_out && item.is_early_leave && { backgroundColor: '#fffbeb', borderColor: '#fde68a', borderWidth: 1 }
+                      ]}>
+                        <View style={styles.timeGridColHeader}>
+                          <View style={[styles.gridDot, { backgroundColor: theme.colors.danger }]} />
+                          <Text style={styles.gridLabel} numberOfLines={1}>Pulang</Text>
+                        </View>
+                        <Text style={[
+                          styles.gridTime,
+                          item.clock_out && item.is_early_leave && { color: '#b45309' }
+                        ]}>
+                          {item.clock_out ? item.clock_out.substring(0, 5) : '--:--'}
+                        </Text>
+                        <Text style={[
+                          styles.gridSubText,
+                          item.clock_out
+                            ? (item.is_early_leave ? { color: '#b45309' } : { color: '#16a34a' })
+                            : { color: theme.colors.textMuted }
+                        ]} numberOfLines={1}>
+                          {item.clock_out
+                            ? (item.is_early_leave ? formatDurationBadge(item.early_leave_minutes, 'Cepat') : 'Tepat Waktu')
+                            : '--'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Chips Info Tambahan (Lembur, Catatan) */}
+                    {showExtraRow && (
+                      <View style={styles.historyChipsRow}>
+                        {hasOvertime ? (
+                          <View style={styles.chipOvertime}>
+                            <MaterialIcons name="more-time" size={11} color="#3730a3" style={{ marginRight: 3 }} />
+                            <Text style={styles.chipOvertimeText}>Lembur {parseFloat(item.overtime_hours!).toFixed(1)} Jam</Text>
+                          </View>
+                        ) : null}
+
+                        {hasNotes ? (
+                          <View style={styles.chipNotes}>
+                            <MaterialIcons name="notes" size={11} color={theme.colors.textMuted} style={{ marginRight: 3 }} />
+                            <Text style={styles.chipNotesText} numberOfLines={1}>{item.notes}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    )}
                   </View>
                 );
               })
@@ -2427,39 +2538,105 @@ const styles = StyleSheet.create({
   filterText: { fontSize: 12, fontWeight: 'bold', color: theme.colors.primary, marginRight: 4 },
 
   listContainer: { backgroundColor: theme.colors.card, borderRadius: theme.radius.m, elevation: 1, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
-  listItem: { flexDirection: 'row', alignItems: 'center', padding: theme.spacing.m, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', backgroundColor: theme.colors.card },
-  listItemToday: { backgroundColor: '#f8faff', borderLeftWidth: 3.5, borderLeftColor: theme.colors.primary },
+  listItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    backgroundColor: theme.colors.card
+  },
+  listItemToday: {
+    backgroundColor: '#f8faff'
+  },
   emptyText: { color: theme.colors.textMuted, marginTop: 8, fontSize: 13 },
 
-  dateBadge: { 
-    backgroundColor: '#f1f5f9', 
-    paddingVertical: 12, 
-    paddingHorizontal: 8, 
-    borderRadius: 10, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    minWidth: 52, 
-    marginRight: theme.spacing.m 
+  historyCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10
   },
-  dateBadgeToday: { backgroundColor: '#e0e7ff', borderColor: '#c7d2fe', borderWidth: 1 },
-  dateBadgeDay: { fontSize: 18, fontWeight: 'bold', color: theme.colors.primary, lineHeight: 22 },
-  dateBadgeDayToday: { color: theme.colors.primary },
-  dateBadgeMonth: { fontSize: 10, color: theme.colors.textMuted, textTransform: 'uppercase', fontWeight: 'bold', marginTop: 1 },
-  dateBadgeMonthToday: { color: theme.colors.primary },
-  todayBadgeTag: { backgroundColor: theme.colors.primary, borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1, marginTop: 4, alignItems: 'center' },
-  todayBadgeTagText: { color: '#fff', fontSize: 7, fontWeight: 'bold' },
+  historyHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8
+  },
+  historyDateBadge: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginRight: 8
+  },
+  historyDateBadgeToday: {
+    backgroundColor: '#e0e7ff'
+  },
+  historyDateBadgeText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#334155'
+  },
+  historyDateBadgeTextToday: {
+    color: theme.colors.primary
+  },
+  historyDateDayName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.text
+  },
+  todayTag: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    marginLeft: 6
+  },
+  todayTagText: {
+    color: '#fff',
+    fontSize: 8.5,
+    fontWeight: 'bold'
+  },
 
-  historyContent: { flex: 1, justifyContent: 'center' },
-  timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 20 },
-  timeRowLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  timeLabelWrap: { flexDirection: 'row', alignItems: 'center', width: 76 },
-  dot: { width: 7, height: 7, borderRadius: 4, marginRight: 7 },
-  timeLabel: { fontSize: 12, color: theme.colors.textMuted },
-  
-  timeValue: { fontSize: 14, fontWeight: 'bold', color: theme.colors.text },
-  notesText: { fontSize: 11, color: theme.colors.textMuted, fontStyle: 'italic', maxWidth: 120 },
-  
-  timeDivider: { height: 1, backgroundColor: '#f1f5f9', marginVertical: 5, marginLeft: 14 },
+  historyGridRow: {
+    flexDirection: 'row',
+    gap: 6
+  },
+  timeGridCol: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+    paddingVertical: 7,
+    paddingHorizontal: 2,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  timeGridColHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 3
+  },
+  gridDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginRight: 3.5
+  },
+  gridLabel: {
+    fontSize: 9.5,
+    fontWeight: '600',
+    color: theme.colors.textMuted
+  },
+  gridTime: {
+    fontSize: 12.5,
+    fontWeight: 'bold',
+    color: theme.colors.text
+  },
+  gridSubText: {
+    fontSize: 8.5,
+    fontWeight: 'bold',
+    marginTop: 1.5
+  },
 
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   statusText: { fontSize: 11, fontWeight: 'bold' },
