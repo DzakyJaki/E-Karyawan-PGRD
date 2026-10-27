@@ -90,12 +90,12 @@ export function AppLock({ children }: { children: React.ReactNode }) {
       }
 
       // Jika masuk ke background, catat waktunya
-      if (appState.current.match(/active/) && nextAppState === 'background') {
+      if (appState.current?.match(/active/) && nextAppState === 'background') {
         backgroundTime.current = Date.now();
       }
 
       // Jika kembali ke active dari background
-      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+      if (appState.current?.match(/inactive|background/) && nextAppState === 'active') {
         if (backgroundTime.current) {
           const timeAway = Date.now() - backgroundTime.current;
           if (timeAway > LOCK_TIMEOUT) {

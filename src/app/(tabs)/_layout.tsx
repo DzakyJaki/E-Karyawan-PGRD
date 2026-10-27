@@ -48,11 +48,11 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{
         title: 'Beranda',
         headerShown: false,
-        tabBarIcon: ({ color }) => <MaterialIcons name="home" size={24} color={color} />
+        tabBarIcon: ({ color }) => <MaterialIcons name="home" size={24} color={color as string} />
       }} />
       <Tabs.Screen name="leave" options={{
         title: 'Cuti',
-        tabBarIcon: ({ color }) => <MaterialIcons name="beach-access" size={24} color={color} />
+        tabBarIcon: ({ color }) => <MaterialIcons name="beach-access" size={24} color={color as string} />
       }} />
       <Tabs.Screen name="attendance" options={{
         title: 'Presensi',
@@ -67,7 +67,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="salary" options={{
         title: 'Slip Gaji',
         headerShown: true,
-        tabBarIcon: ({ color }) => <MaterialIcons name="payments" size={24} color={color} />
+        tabBarIcon: ({ color }) => <MaterialIcons name="payments" size={24} color={color as string} />
       }} />
       {/* Tab Lembur disembunyikan sementara sesuai instruksi owner, kodingan tetap utuh */}
       <Tabs.Screen name="overtime" options={{
@@ -78,7 +78,7 @@ export default function TabsLayout() {
         options={{
           title: 'Profil',
           headerShown: false,
-          tabBarIcon: ({ color }) => <MaterialIcons name="person" size={24} color={color} />
+          tabBarIcon: ({ color }) => <MaterialIcons name="person" size={24} color={color as string} />
         }} 
         listeners={({ navigation }) => ({
           tabPress: () => {
