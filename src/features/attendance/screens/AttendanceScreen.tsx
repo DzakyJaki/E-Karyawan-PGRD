@@ -856,7 +856,7 @@ export function AttendanceScreen() {
 
         return {
           type: 'Mulai Istirahat' as const,
-          title: isBreakUnlocked ? 'Mulai Istirahat' : 'Belum Jam Istirahat',
+          title: 'Mulai Istirahat',
           sub,
           icon: isBreakUnlocked ? ('free-breakfast' as keyof typeof MaterialIcons.glyphMap) : ('lock-clock' as keyof typeof MaterialIcons.glyphMap),
           btnColor: isBreakUnlocked ? '#d97706' : '#94a3b8',
@@ -1751,8 +1751,7 @@ export function AttendanceScreen() {
                 const isToday = item.date === todayStr;
                 const hasOvertime = Boolean(item.overtime_hours && parseFloat(item.overtime_hours) > 0);
                 const hasNotes = Boolean(item.notes);
-                const hasRadius = item.is_within_radius !== null && item.is_within_radius !== undefined;
-                const showExtraRow = hasRadius || hasOvertime || hasNotes;
+                const showExtraRow = hasOvertime || hasNotes;
 
                 return (
                   <View 
@@ -1783,8 +1782,21 @@ export function AttendanceScreen() {
                           </View>
                           <Text style={styles.timeValue}>{item.clock_in ? item.clock_in.substring(0, 5) : '--:--'}</Text>
                         </View>
-                        <View style={[styles.statusBadge, { backgroundColor: statusInfo.bg }]}>
-                          <Text style={[styles.statusText, { color: statusInfo.text }]}>{statusInfo.label}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                          {item.is_within_radius === true ? (
+                            <View style={styles.chipRadiusOk}>
+                              <MaterialIcons name="check-circle" size={10} color="#15803d" style={{ marginRight: 2 }} />
+                              <Text style={styles.chipRadiusOkText}>Radius</Text>
+                            </View>
+                          ) : item.is_within_radius === false ? (
+                            <View style={styles.chipRadiusErr}>
+                              <MaterialIcons name="wrong-location" size={10} color="#b91c1c" style={{ marginRight: 2 }} />
+                              <Text style={styles.chipRadiusErrText}>Luar</Text>
+                            </View>
+                          ) : null}
+                          <View style={[styles.statusBadge, { backgroundColor: statusInfo.bg }]}>
+                            <Text style={[styles.statusText, { color: statusInfo.text }]}>{statusInfo.label}</Text>
+                          </View>
                         </View>
                       </View>
 
@@ -1795,12 +1807,12 @@ export function AttendanceScreen() {
                       <View style={styles.timeRow}>
                         <View style={styles.timeRowLeft}>
                           <View style={styles.timeLabelWrap}>
-                            <View style={[styles.dot, { backgroundColor: '#d97706' }]} />
+                            <View style={[styles.dot, { backgroundColor: '#f59e0b' }]} />
                             <Text style={styles.timeLabel}>Istirahat</Text>
                           </View>
                           <Text style={styles.timeValue}>
                             {item.break_start 
-                              ? `${item.break_start.substring(0, 5)} - ${item.break_end ? item.break_end.substring(0, 5) : 'Rehat'}` 
+                              ? `${item.break_start.substring(0, 5)}${item.break_end ? ` - ${item.break_end.substring(0, 5)}` : ''}` 
                               : '--:--'}
                           </Text>
                         </View>
@@ -1811,6 +1823,9 @@ export function AttendanceScreen() {
                         ) : null}
                       </View>
 
+                      {/* Divider Line */}
+                      <View style={styles.timeDivider} />
+
                       {/* Baris Jam Keluar */}
                       <View style={styles.timeRow}>
                         <View style={styles.timeRowLeft}>
@@ -1820,23 +1835,16 @@ export function AttendanceScreen() {
                           </View>
                           <Text style={styles.timeValue}>{item.clock_out ? item.clock_out.substring(0, 5) : '--:--'}</Text>
                         </View>
+                        {item.clock_out && item.is_early_leave ? (
+                          <View style={[styles.statusBadge, { backgroundColor: '#fef3c7' }]}>
+                            <Text style={[styles.statusText, { color: '#b45309' }]}>Pulang Awal</Text>
+                          </View>
+                        ) : null}
                       </View>
 
-                      {/* Chips Info Tambahan (Radius, Lembur, Catatan) */}
+                      {/* Chips Info Tambahan (Lembur, Catatan) */}
                       {showExtraRow && (
                         <View style={styles.historyChipsRow}>
-                          {item.is_within_radius === true ? (
-                            <View style={styles.chipRadiusOk}>
-                              <MaterialIcons name="check-circle" size={11} color="#15803d" style={{ marginRight: 3 }} />
-                              <Text style={styles.chipRadiusOkText}>Radius Kantor</Text>
-                            </View>
-                          ) : item.is_within_radius === false ? (
-                            <View style={styles.chipRadiusErr}>
-                              <MaterialIcons name="wrong-location" size={11} color="#b91c1c" style={{ marginRight: 3 }} />
-                              <Text style={styles.chipRadiusErrText}>Di Luar Radius</Text>
-                            </View>
-                          ) : null}
-
                           {hasOvertime ? (
                             <View style={styles.chipOvertime}>
                               <MaterialIcons name="more-time" size={11} color="#3730a3" style={{ marginRight: 3 }} />
@@ -2429,8 +2437,17 @@ const styles = StyleSheet.create({
   listItemToday: { backgroundColor: '#f8faff', borderLeftWidth: 3.5, borderLeftColor: theme.colors.primary },
   emptyText: { color: theme.colors.textMuted, marginTop: 8, fontSize: 13 },
 
-  dateBadge: { backgroundColor: '#f1f5f9', padding: 8, borderRadius: 8, alignItems: 'center', minWidth: 48, marginRight: theme.spacing.m },
-  dateBadgeToday: { backgroundColor: '#e0e7ff' },
+  dateBadge: { 
+    backgroundColor: '#f1f5f9', 
+    paddingVertical: 10, 
+    paddingHorizontal: 8, 
+    borderRadius: 10, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    minWidth: 50, 
+    marginRight: theme.spacing.m 
+  },
+  dateBadgeToday: { backgroundColor: '#e0e7ff', borderColor: '#c7d2fe', borderWidth: 1 },
   dateBadgeDay: { fontSize: 17, fontWeight: 'bold', color: theme.colors.primary },
   dateBadgeDayToday: { color: theme.colors.primary },
   dateBadgeMonth: { fontSize: 10, color: theme.colors.textMuted, textTransform: 'uppercase', fontWeight: 'bold' },
@@ -2439,16 +2456,16 @@ const styles = StyleSheet.create({
   todayBadgeTagText: { color: '#fff', fontSize: 7, fontWeight: 'bold' },
 
   historyContent: { flex: 1, justifyContent: 'center' },
-  timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 20 },
   timeRowLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  timeLabelWrap: { flexDirection: 'row', alignItems: 'center', width: 62 },
+  timeLabelWrap: { flexDirection: 'row', alignItems: 'center', width: 76 },
   dot: { width: 7, height: 7, borderRadius: 4, marginRight: 7 },
   timeLabel: { fontSize: 12, color: theme.colors.textMuted },
   
   timeValue: { fontSize: 14, fontWeight: 'bold', color: theme.colors.text },
   notesText: { fontSize: 11, color: theme.colors.textMuted, fontStyle: 'italic', maxWidth: 120 },
   
-  timeDivider: { height: 1, backgroundColor: '#f1f5f9', marginVertical: 6, marginLeft: 16 },
+  timeDivider: { height: 1, backgroundColor: '#f1f5f9', marginVertical: 5, marginLeft: 14 },
 
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   statusText: { fontSize: 11, fontWeight: 'bold' },
@@ -2519,12 +2536,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#dcfce7',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 6
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5
   },
   chipRadiusOkText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 'bold',
     color: '#15803d'
   },
@@ -2532,12 +2549,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fee2e2',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 6
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5
   },
   chipRadiusErrText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 'bold',
     color: '#b91c1c'
   },
