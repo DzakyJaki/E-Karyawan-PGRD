@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { AppLock } from '../components/AppLock';
+// import { AppLock } from '../components/AppLock';
 import { NetworkNotifier } from '../components/NetworkNotifier';
 import { BreakNotificationBanner } from '../components/BreakNotificationBanner';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
@@ -82,14 +82,15 @@ export default function RootLayout() {
         <ToastProvider>
           <NetworkNotifier />
           <BreakNotificationBanner />
-          <AppLock>
+          {/* PIN & Sidik Jari sementara dinonaktifkan untuk platform Web */}
+          {/* <AppLock> */}
             <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="login" />
               <Stack.Screen name="forgot-password" />
               <Stack.Screen name="(tabs)" />
             </Stack>
-          </AppLock>
+          {/* </AppLock> */}
         </ToastProvider>
       </ConfirmProvider>
     </GestureHandlerRootView>

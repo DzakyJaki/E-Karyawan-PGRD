@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, A
 import { theme } from '../../../core/theme';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
-import * as LocalAuthentication from 'expo-local-authentication';
+// import * as LocalAuthentication from 'expo-local-authentication';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { useToast } from '../../../core/ToastContext';
@@ -54,15 +54,15 @@ export default function SalaryScreen() {
   const router = useRouter();
   const { showToast } = useToast();
 
-  // Auth / Security States
-  const [isUnlocked, setIsUnlocked] = useState(false);
+  // Auth / Security States - PIN & Sidik Jari dinonaktifkan sementara untuk platform Web
+  const [isUnlocked, setIsUnlocked] = useState(true);
   const isUnlockedRef = useRef(isUnlocked);
   useEffect(() => {
     isUnlockedRef.current = isUnlocked;
   }, [isUnlocked]);
 
   const [pin, setPin] = useState('');
-  const [hasBiometrics, setHasBiometrics] = useState(false);
+  const hasBiometrics = false;
   const [savedPin, setSavedPin] = useState<string | null>(null);
   const [isPinConfigured, setIsPinConfigured] = useState<boolean | null>(null);
   const [setupStep, setSetupStep] = useState<1 | 2>(1);
@@ -88,11 +88,11 @@ export default function SalaryScreen() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedYearFilter, setSelectedYearFilter] = useState<'all' | number>('all');
 
+  /*
   const loadSavedPin = async () => {
     try {
       const p = await AsyncStorage.getItem('app_pin');
       if (p === '123456') {
-        // Hapus PIN hardcoded lama jika tersimpan dari pengujian
         await AsyncStorage.removeItem('app_pin');
         setSavedPin(null);
         setIsPinConfigured(false);
@@ -108,10 +108,14 @@ export default function SalaryScreen() {
       setIsPinConfigured(false);
     }
   };
+  */
 
-  // Kunci otomatis setiap kali pengguna beralih tab atau meninggalkan layar Slip Gaji
+  // PIN & Sidik Jari dinonaktifkan sementara untuk platform Web
   useFocusEffect(
     useCallback(() => {
+      // Langsung buka slip gaji tanpa meminta PIN / Sidik Jari
+      setIsUnlocked(true);
+      /*
       let isFocused = true;
       let timer: any = null;
 
@@ -160,10 +164,13 @@ export default function SalaryScreen() {
         setTempPin('');
         setSetupStep(1);
       };
+      */
     }, [])
   );
 
   const authenticate = async () => {
+    // PIN & Sidik Jari dinonaktifkan sementara untuk platform Web
+    /*
     try {
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
       const isEnrolled = await LocalAuthentication.isEnrolledAsync();
@@ -180,6 +187,7 @@ export default function SalaryScreen() {
     } catch (error) {
       console.log('Autentikasi Biometrik Batal/Error', error);
     }
+    */
   };
 
   const handleKeyPress = async (num: string) => {

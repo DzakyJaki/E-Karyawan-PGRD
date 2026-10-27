@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, AppState, TouchableOpacity, Alert } from 'react-native';
-import * as LocalAuthentication from 'expo-local-authentication';
-import { MaterialIcons } from '@expo/vector-icons';
-import { theme } from '../core/theme';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React from 'react';
+// import { useState, useEffect, useRef, useCallback } from 'react';
+// import { View, Text, StyleSheet, AppState, TouchableOpacity, Alert } from 'react-native';
+// import * as LocalAuthentication from 'expo-local-authentication';
+// import { MaterialIcons } from '@expo/vector-icons';
+// import { theme } from '../core/theme';
+// import AsyncStorage from '@react-native-async-storage/async-storage';
 
 let isAppLockSuspended = false;
 
@@ -26,6 +27,10 @@ export const resumeAppLock = (delayMs = 3000) => {
 export const getIsAppLockSuspended = () => isAppLockSuspended;
 
 export function AppLock({ children }: { children: React.ReactNode }) {
+  // PIN & Sidik Jari dinonaktifkan sementara untuk platform Web (cukup dirender langsung)
+  return <>{children}</>;
+
+  /*
   const [isLocked, setIsLocked] = useState(false);
   const [hasBiometrics, setHasBiometrics] = useState(false);
   const [savedPin, setSavedPin] = useState<string | null>(null);
@@ -82,24 +87,20 @@ export function AppLock({ children }: { children: React.ReactNode }) {
     loadSavedPin();
 
     const subscription = AppState.addEventListener('change', nextAppState => {
-      // Jika AppLock sedang ditangguhkan (misal sedang buka kamera/galeri), reset timer dan jangan kunci
       if (isAppLockSuspended) {
         backgroundTime.current = null;
         appState.current = nextAppState;
         return;
       }
 
-      // Jika masuk ke background, catat waktunya
       if (appState.current?.match(/active/) && nextAppState === 'background') {
         backgroundTime.current = Date.now();
       }
 
-      // Jika kembali ke active dari background
       if (appState.current?.match(/inactive|background/) && nextAppState === 'active') {
         if (backgroundTime.current) {
           const timeAway = Date.now() - backgroundTime.current;
           if (timeAway > LOCK_TIMEOUT) {
-            // Hanya kunci jika pengguna telah mengaktifkan Sidik Jari di menu Pengaturan
             AsyncStorage.getItem('biometrics_enabled').then(bioEnabled => {
               if (bioEnabled === 'true') {
                 setIsLocked(true);
@@ -146,7 +147,6 @@ export function AppLock({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  // Tampilan M-Banking Style Lock Screen (Murni dinamis tanpa hardcode)
   return (
     <View style={styles.lockScreen}>
       <View style={styles.header}>
@@ -187,8 +187,10 @@ export function AppLock({ children }: { children: React.ReactNode }) {
       </View>
     </View>
   );
+  */
 }
 
+/*
 const styles = StyleSheet.create({
   lockScreen: {
     flex: 1,
@@ -216,3 +218,4 @@ const styles = StyleSheet.create({
   keyText: { fontSize: 28, fontWeight: '600', color: '#fff' },
   keyBtnAction: { width: 80, height: 80, justifyContent: 'center', alignItems: 'center', margin: 6 },
 });
+*/

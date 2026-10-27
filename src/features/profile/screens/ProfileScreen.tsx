@@ -208,8 +208,9 @@ export function ProfileScreen() {
       title: 'Pengaturan Akun & Keamanan',
       items: [
         { icon: 'lock', label: 'Ubah Password', color: '#f59e0b', route: '/profile/change-password' },
-        { icon: 'dialpad', label: 'PIN Keamanan', color: '#10b981', route: '/profile/pin-setup' },
-        { icon: 'fingerprint', label: 'Kunci Sidik Jari (Biometrik)', color: '#ec4899', route: '/profile/biometrics' },
+        // PIN & Sidik Jari dinonaktifkan sementara untuk platform Web
+        // { icon: 'dialpad', label: 'PIN Keamanan', color: '#10b981', route: '/profile/pin-setup' },
+        // { icon: 'fingerprint', label: 'Kunci Sidik Jari (Biometrik)', color: '#ec4899', route: '/profile/biometrics' },
         { icon: 'chat', label: 'Tutorial Penggunaan', color: '#8b5cf6', route: '/profile/chat-support' },
       ]
     }
