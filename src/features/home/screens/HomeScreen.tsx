@@ -518,16 +518,27 @@ export function HomeScreen() {
               <MaterialIcons name="free-breakfast" size={17} color="#d97706" />
             </View>
             <View style={{ flex: 1, paddingRight: 6 }}>
-              <Text style={styles.homeBreakTitle}>Absensi Istirahat</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
-                <Text style={styles.homeBreakLabel}>Mulai: </Text>
-                <Text style={styles.homeBreakTimeBold}>
-                  {todayAttendance?.break_start ? `${todayAttendance.break_start.substring(0, 5)} WIB` : '--:--'}
-                </Text>
-                <Text style={[styles.homeBreakLabel, { marginLeft: 12 }]}>Selesai: </Text>
-                <Text style={styles.homeBreakTimeBold}>
-                  {todayAttendance?.break_end ? `${todayAttendance.break_end.substring(0, 5)} WIB` : '--:--'}
-                </Text>
+              <View style={styles.homeBreakColsRow}>
+                {/* Kolom 1: Mulai Istirahat */}
+                <View style={styles.homeBreakCol}>
+                  <Text style={styles.homeBreakColLabel}>Mulai Ist.</Text>
+                  <Text style={styles.homeBreakTimeBold}>
+                    {todayAttendance?.break_start ? `${todayAttendance.break_start.substring(0, 5)} WIB` : '--:--'}
+                  </Text>
+                </View>
+
+                <View style={styles.homeBreakColDivider} />
+
+                {/* Kolom 2: Selesai Istirahat */}
+                <View style={styles.homeBreakCol}>
+                  <Text style={styles.homeBreakColLabel}>Selesai Ist.</Text>
+                  <Text style={[
+                    styles.homeBreakTimeBold,
+                    todayBreakLate?.isLate && { color: '#dc2626' }
+                  ]}>
+                    {todayAttendance?.break_end ? `${todayAttendance.break_end.substring(0, 5)} WIB` : '--:--'}
+                  </Text>
+                </View>
               </View>
             </View>
 
@@ -815,32 +826,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 10
   },
-  homeBreakTitle: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#92400e',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4
+  homeBreakColsRow: {
+    flexDirection: 'row',
+    alignItems: 'center'
   },
-  homeBreakLabel: {
-    fontSize: 12,
-    color: '#92400e',
-    fontWeight: '500'
+  homeBreakCol: {
+    justifyContent: 'center'
   },
-  homeBreakTimes: {
-    fontSize: 13,
-    color: '#78350f',
-    marginTop: 1
+  homeBreakColLabel: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: '#92400e',
+    marginBottom: 1
+  },
+  homeBreakColDivider: {
+    width: 1,
+    height: 22,
+    backgroundColor: '#fde68a',
+    marginHorizontal: 10
   },
   homeBreakTimeBold: {
     fontWeight: 'bold',
     color: '#78350f',
-    fontSize: 14
-  },
-  homeBreakTimeSub: {
-    fontSize: 11,
-    color: '#b45309',
-    fontWeight: '500'
+    fontSize: 13
   },
   homeBreakStatusBadge: {
     paddingHorizontal: 8,
