@@ -34,8 +34,13 @@ interface AttendanceRecord {
   late_minutes?: number | null;
   late_status?: string | null;
   break_late_status?: string | null;
+  is_early_leave?: boolean | null;
+  early_leave_minutes?: number | null;
+  early_leave_status?: string | null;
   notes?: string | null;
 }
+
+export type LateType = 'masuk' | 'istirahat' | 'pulang_cepat';
 
 export interface LateExplanationItem {
   id?: number;
@@ -43,7 +48,7 @@ export interface LateExplanationItem {
   attendance_date?: string;
   clock_in?: string | null;
   clock_out?: string | null;
-  late_type: 'masuk' | 'istirahat';
+  late_type: LateType;
   alasan: string;
   bukti_file?: string | null;
   status?: 'pending' | 'approved' | 'rejected' | 'menunggu' | 'disetujui' | 'ditolak' | string;
@@ -86,7 +91,7 @@ export default function LateExplanationScreen() {
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Form Fields
-  const [lateType, setLateType] = useState<'masuk' | 'istirahat'>('masuk');
+  const [lateType, setLateType] = useState<LateType>('masuk');
   const [alasan, setAlasan] = useState('');
   const [attachmentUri, setAttachmentUri] = useState<string | null>(null);
   const [attachmentName, setAttachmentName] = useState<string | null>(null);
@@ -129,7 +134,7 @@ export default function LateExplanationScreen() {
     return 999;
   }, []);
 
-  // Helper: Memeriksa apakah suatu presensi memiliki keterlambatan (masuk atau istirahat)
+  // Helper: Memeriksa apakah suatu presensi memiliki keterlambatan / ketidaksesuaian jam (masuk, istirahat, atau pulang cepat)
   const checkIsAttendanceLate = useCallback((item: AttendanceRecord) => {
     const isLateMasuk = Boolean(
       item.is_late === true ||
@@ -151,22 +156,59 @@ export default function LateExplanationScreen() {
        item.break_late_status.toLowerCase().includes('menit'))
     );
 
+    const isEarlyLeave = Boolean(
+      item.is_early_leave === true ||
+      (typeof item.early_leave_minutes === 'number' && item.early_leave_minutes > 0) ||
+      (item.early_leave_status &&
+        !item.early_leave_status.toLowerCase().includes('tepat') &&
+        (item.early_leave_status.toLowerCase().includes('cepat') ||
+         item.early_leave_status.toLowerCase().includes('pulang') ||
+         item.early_leave_status.toLowerCase().includes('menit'))) ||
+      (item.status && item.status.toLowerCase().includes('cepat'))
+    );
+
     return {
-      isLate: isLateMasuk || isLateBreak,
+      isLate: isLateMasuk || isLateBreak || isEarlyLeave,
       isLateMasuk,
-      isLateBreak
+      isLateBreak,
+      isEarlyLeave
     };
   }, []);
 
-  // Filter Attendances: Hanya presensi dalam rentang 3 hari terakhir DAN HANYA yang ada keterlambatannya
-  const eligibleAttendances = useMemo(() => {
+  // Deteksi otomatis jenis keterlambatan dari record presensi
+  const detectLateType = useCallback((item: AttendanceRecord): { primaryType: LateType; detectedTypes: LateType[] } => {
+    const { isLateMasuk, isLateBreak, isEarlyLeave } = checkIsAttendanceLate(item);
+    const detectedTypes: LateType[] = [];
+
+    if (isLateMasuk) detectedTypes.push('masuk');
+    if (isEarlyLeave) detectedTypes.push('pulang_cepat');
+    if (isLateBreak) detectedTypes.push('istirahat');
+
+    // Tentukan jenis utama
+    let primaryType: LateType = 'masuk';
+    if (isLateMasuk) {
+      primaryType = 'masuk';
+    } else if (isEarlyLeave) {
+      primaryType = 'pulang_cepat';
+    } else if (isLateBreak) {
+      primaryType = 'istirahat';
+    }
+
+    return {
+      primaryType,
+      detectedTypes: detectedTypes.length > 0 ? detectedTypes : ['masuk']
+    };
+  }, [checkIsAttendanceLate]);
+
+  // Menampilkan seluruh presensi yang tercatat terlambat / pulang cepat
+  const lateAttendances = useMemo(() => {
     return attendances
       .filter(item => {
-        // 1. Batas maksimal 3 hari ke belakang
         const diff = getDaysDiff(item.date);
-        if (diff < 0 || diff > 3) return false;
+        // Jangan tampilkan tanggal masa depan
+        if (diff < 0) return false;
 
-        // 2. HANYA yang memiliki keterlambatan (masuk atau istirahat)
+        // HANYA yang memiliki keterlambatan (masuk, istirahat, atau pulang cepat)
         const { isLate } = checkIsAttendanceLate(item);
         return isLate;
       })
@@ -252,21 +294,18 @@ export default function LateExplanationScreen() {
 
       // Otomatis pilih item jika belum ada yang terpilih
       if (!selectedAttendanceId && mergedList.length > 0) {
-        const eligible = mergedList.filter(item => {
+        const lateList = mergedList.filter(item => {
           const diff = getDaysDiff(item.date);
-          return diff >= 0 && diff <= 3;
+          return diff >= 0 && checkIsAttendanceLate(item).isLate;
         });
 
-        const lateItem = eligible.find(item => {
-          const isLateMasuk = item.is_late || (item.late_minutes && item.late_minutes > 0);
-          const isLateBreak = item.break_late_status && !item.break_late_status.toLowerCase().includes('tepat');
-          return isLateMasuk || isLateBreak;
-        });
+        // Utamakan yang masih dalam batas 3 hari agar langsung dapat diajukan
+        const validWithin3Days = lateList.find(item => getDaysDiff(item.date) <= 3);
 
-        if (lateItem) {
-          setSelectedAttendanceId(lateItem.id);
-        } else if (eligible.length > 0) {
-          setSelectedAttendanceId(eligible[0].id);
+        if (validWithin3Days) {
+          setSelectedAttendanceId(validWithin3Days.id);
+        } else if (lateList.length > 0) {
+          setSelectedAttendanceId(lateList[0].id);
         }
       }
     } catch (err) {
@@ -275,7 +314,7 @@ export default function LateExplanationScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [getDaysDiff, selectedAttendanceId]);
+  }, [getDaysDiff, selectedAttendanceId, checkIsAttendanceLate]);
 
   // Fetch Full History of Late Explanations
   const fetchAllExplanationsHistory = useCallback(async (currentAttendances: AttendanceRecord[]) => {
@@ -379,31 +418,40 @@ export default function LateExplanationScreen() {
 
   // Pastikan selectedAttendanceId selalu memilih presensi terlambat yang ada dalam daftar
   useEffect(() => {
-    if (eligibleAttendances.length > 0) {
-      const isValid = eligibleAttendances.some(a => a.id === selectedAttendanceId);
+    if (lateAttendances.length > 0) {
+      const isValid = lateAttendances.some(a => a.id === selectedAttendanceId);
       if (!isValid) {
-        setSelectedAttendanceId(eligibleAttendances[0].id);
+        const validItem = lateAttendances.find(a => getDaysDiff(a.date) <= 3) || lateAttendances[0];
+        setSelectedAttendanceId(validItem.id);
       }
     } else {
       setSelectedAttendanceId(null);
     }
-  }, [eligibleAttendances, selectedAttendanceId]);
+  }, [lateAttendances, selectedAttendanceId, getDaysDiff]);
 
-  // When selectedAttendance changes, auto-set default lateType based on attendances record
+  // Otomatis tentukan jenis keterlambatan (masuk / istirahat / pulang_cepat) dari presensi yang dipilih
   useEffect(() => {
     if (selectedAttendanceId) {
       setFormErrors({});
-      const target = eligibleAttendances.find(a => a.id === selectedAttendanceId) || attendances.find(a => a.id === selectedAttendanceId);
+      const target = lateAttendances.find(a => a.id === selectedAttendanceId) || attendances.find(a => a.id === selectedAttendanceId);
       if (target) {
-        const { isLateMasuk, isLateBreak } = checkIsAttendanceLate(target);
-        if (!isLateMasuk && isLateBreak) {
-          setLateType('istirahat');
-        } else {
-          setLateType('masuk');
-        }
+        const { primaryType } = detectLateType(target);
+        setLateType(primaryType);
       }
     }
-  }, [selectedAttendanceId, eligibleAttendances, attendances, checkIsAttendanceLate]);
+  }, [selectedAttendanceId, lateAttendances, attendances, detectLateType]);
+
+  // Data presensi yang saat ini dipilih
+  const selectedAttendance = useMemo(() => {
+    if (!selectedAttendanceId) return null;
+    return lateAttendances.find(a => a.id === selectedAttendanceId) || attendances.find(a => a.id === selectedAttendanceId) || null;
+  }, [selectedAttendanceId, lateAttendances, attendances]);
+
+  // Apakah presensi terpilih melebihi batas 3 hari
+  const isSelectedExpired = useMemo(() => {
+    if (!selectedAttendance) return false;
+    return getDaysDiff(selectedAttendance.date) > 3;
+  }, [selectedAttendance, getDaysDiff]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -774,20 +822,21 @@ export default function LateExplanationScreen() {
               <View style={styles.ruleNoticeBox}>
                 <MaterialIcons name="schedule" size={18} color="#ea580c" style={{ marginTop: 2, marginRight: 8 }} />
                 <Text style={styles.ruleNoticeText}>
-                  <Text style={{ fontWeight: '700' }}>Ketentuan Pengajuan:</Text> Klarifikasi keterlambatan hanya dapat diajukan{' '}
-                  <Text style={{ fontWeight: '700', color: '#ea580c' }}>maksimal 3 hari</Text> setelah tanggal presensi bersangkutan.
+                  <Text style={{ fontWeight: '700' }}>Ketentuan Pengajuan:</Text> Klarifikasi keterlambatan mandiri hanya dapat diajukan{' '}
+                  <Text style={{ fontWeight: '700', color: '#ea580c' }}>maksimal 3 hari</Text> setelah tanggal presensi. Jika lebih dari 3 hari, silakan{' '}
+                  <Text style={{ fontWeight: '700', color: '#dc2626' }}>hubungi personalia</Text>.
                 </Text>
               </View>
             </View>
 
-            {/* SECTION: PILIH PRESENSI YANG TERLAMBAT (MAKS 3 HARI) */}
+            {/* SECTION: PILIH PRESENSI YANG TERLAMBAT */}
             <View style={styles.sectionCard}>
               <View style={styles.sectionHeaderRow}>
                 <MaterialIcons name="event-available" size={20} color={theme.colors.primary} />
                 <Text style={styles.sectionTitle}>Pilih Presensi yang Terlambat</Text>
               </View>
               <Text style={styles.sectionSubtitle}>
-                Hanya menampilkan catatan presensi yang tercatat terlambat dalam 3 hari terakhir:
+                Daftar presensi yang terlambat atau pulang cepat. Keterlambatan lebih dari 3 hari berlabel Hubungi Personalia:
               </Text>
 
               {loading ? (
@@ -795,37 +844,50 @@ export default function LateExplanationScreen() {
                   <ActivityIndicator size="small" color={theme.colors.primary} />
                   <Text style={styles.loadingText}>Memuat data presensi...</Text>
                 </View>
-              ) : eligibleAttendances.length === 0 ? (
+              ) : lateAttendances.length === 0 ? (
                 <View style={styles.emptyBox}>
                   <MaterialIcons name="check-circle" size={48} color="#10b981" />
                   <Text style={styles.emptyTitle}>Tidak Ada Presensi Terlambat</Text>
                   <Text style={styles.emptyDesc}>
-                    Tidak ditemukan catatan presensi yang terlambat dalam 3 hari terakhir. Kehadiran Anda tercatat tepat waktu!
+                    Tidak ditemukan catatan presensi yang terlambat atau pulang cepat. Kehadiran Anda tercatat tepat waktu!
                   </Text>
                 </View>
               ) : (
                 <View style={styles.attendanceListWrapper}>
-                  {eligibleAttendances.map(item => {
+                  {lateAttendances.map(item => {
                     const isSelected = item.id === selectedAttendanceId;
                     const diff = getDaysDiff(item.date);
+                    const isExpired = diff > 3;
                     const isToday = diff === 0;
 
-                    const { isLateMasuk, isLateBreak } = checkIsAttendanceLate(item);
+                    const { isLateMasuk, isLateBreak, isEarlyLeave } = checkIsAttendanceLate(item);
 
-                    let sisaText = 'Batas Hari Ini';
-                    let sisaColor = '#ea580c';
-                    if (isToday) {
-                      sisaText = 'Hari Ini (Sisa 3 hari)';
-                      sisaColor = '#10b981';
+                    let badgeText = '';
+                    let badgeBg = '';
+                    let badgeColor = '';
+                    let isPersonalia = false;
+
+                    if (isExpired) {
+                      badgeText = 'Hubungi Personalia';
+                      badgeBg = '#fee2e2';
+                      badgeColor = '#dc2626';
+                      isPersonalia = true;
+                    } else if (isToday) {
+                      badgeText = 'Hari Ini (Sisa 3 hari)';
+                      badgeBg = '#dcfce7';
+                      badgeColor = '#15803d';
                     } else if (diff === 1) {
-                      sisaText = 'Kemarin (Sisa 2 hari)';
-                      sisaColor = '#3b82f6';
+                      badgeText = 'Kemarin (Sisa 2 hari)';
+                      badgeBg = '#dbeafe';
+                      badgeColor = '#1d4ed8';
                     } else if (diff === 2) {
-                      sisaText = '2 hari lalu (Sisa 1 hari)';
-                      sisaColor = '#f59e0b';
+                      badgeText = '2 hari lalu (Sisa 1 hari)';
+                      badgeBg = '#fef3c7';
+                      badgeColor = '#b45309';
                     } else if (diff === 3) {
-                      sisaText = '3 hari lalu (Batas Terakhir!)';
-                      sisaColor = '#ef4444';
+                      badgeText = '3 hari lalu (Batas Terakhir!)';
+                      badgeBg = '#ffedd5';
+                      badgeColor = '#ea580c';
                     }
 
                     return (
@@ -833,22 +895,46 @@ export default function LateExplanationScreen() {
                         key={item.id}
                         style={[
                           styles.attendanceOptionCard,
-                          isSelected && styles.attendanceOptionCardActive
+                          isSelected && (isExpired ? styles.attendanceOptionCardActiveExpired : styles.attendanceOptionCardActive),
+                          isExpired && !isSelected && styles.attendanceOptionCardExpired
                         ]}
                         activeOpacity={0.8}
-                        onPress={() => setSelectedAttendanceId(item.id)}
+                        onPress={() => {
+                          setSelectedAttendanceId(item.id);
+                          if (isExpired) {
+                            showToast({
+                              title: 'Keterlambatan > 3 Hari',
+                              message: 'Presensi ini melebihi batas waktu 3 hari. Harap hubungi bagian personalia.',
+                              type: 'warning'
+                            });
+                          }
+                        }}
                       >
                         <View style={styles.optionHeaderRow}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                            <View style={[styles.radioCircle, isSelected && styles.radioCircleActive]}>
-                              {isSelected && <View style={styles.radioDot} />}
+                            <View style={[
+                              styles.radioCircle,
+                              isSelected && (isExpired ? styles.radioCircleActiveExpired : styles.radioCircleActive),
+                              isExpired && !isSelected && styles.radioCircleExpired
+                            ]}>
+                              {isSelected && (
+                                <View style={[styles.radioDot, isExpired && { backgroundColor: '#dc2626' }]} />
+                              )}
                             </View>
-                            <Text style={[styles.optionDateText, isSelected && { color: theme.colors.primary, fontWeight: '700' }]}>
+                            <Text style={[
+                              styles.optionDateText,
+                              isSelected && { color: isExpired ? '#dc2626' : theme.colors.primary, fontWeight: '700' }
+                            ]}>
                               {formatDateIndo(item.date)}
                             </Text>
                           </View>
-                          <View style={[styles.remainingBadge, { backgroundColor: `${sisaColor}15` }]}>
-                            <Text style={[styles.remainingBadgeText, { color: sisaColor }]}>{sisaText}</Text>
+                          <View style={[styles.remainingBadge, { backgroundColor: badgeBg }]}>
+                            {isPersonalia && (
+                              <MaterialIcons name="support-agent" size={13} color={badgeColor} style={{ marginRight: 3 }} />
+                            )}
+                            <Text style={[styles.remainingBadgeText, { color: badgeColor, fontWeight: isPersonalia ? '700' : '600' }]}>
+                              {badgeText}
+                            </Text>
                           </View>
                         </View>
 
@@ -860,6 +946,15 @@ export default function LateExplanationScreen() {
                               Masuk: <Text style={{ fontWeight: '600' }}>{item.clock_in ? item.clock_in.substring(0, 5) : '--:--'}</Text>
                             </Text>
                           </View>
+
+                          {item.clock_out && (
+                            <View style={styles.timeTag}>
+                              <MaterialIcons name="logout" size={13} color={theme.colors.textMuted} />
+                              <Text style={styles.timeTagText}>
+                                Pulang: <Text style={{ fontWeight: '600' }}>{item.clock_out.substring(0, 5)}</Text>
+                              </Text>
+                            </View>
+                          )}
 
                           {item.break_end && (
                             <View style={styles.timeTag}>
@@ -885,6 +980,14 @@ export default function LateExplanationScreen() {
                               </Text>
                             </View>
                           )}
+
+                          {isEarlyLeave && (
+                            <View style={[styles.lateTag, { backgroundColor: '#fef3c7' }]}>
+                              <Text style={[styles.lateTagText, { color: '#92400e' }]}>
+                                Pulang Cepat {item.early_leave_minutes ? `${item.early_leave_minutes}m` : ''}
+                              </Text>
+                            </View>
+                          )}
                         </View>
                       </TouchableOpacity>
                     );
@@ -897,17 +1000,57 @@ export default function LateExplanationScreen() {
               )}
             </View>
 
-            {/* FORMULIR INPUT KLARIFIKASI */}
-            {eligibleAttendances.length > 0 && selectedAttendanceId ? (
+            {/* JIKA PRESENSI LEBIH DARI 3 HARI: TAMPILKAN HUBUNGI PERSONALIA */}
+            {selectedAttendance && isSelectedExpired ? (
+              <View style={styles.expiredCard}>
+                <View style={styles.expiredHeaderRow}>
+                  <View style={styles.expiredIconBadge}>
+                    <MaterialIcons name="support-agent" size={28} color="#dc2626" />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <View style={styles.expiredPill}>
+                      <Text style={styles.expiredPillText}>Lebih dari 3 Hari</Text>
+                    </View>
+                    <Text style={styles.expiredCardTitle}>Hubungi Personalia</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.expiredCardDesc}>
+                  Keterlambatan pada tanggal{' '}
+                  <Text style={{ fontWeight: '700', color: '#1e293b' }}>
+                    {formatDateIndo(selectedAttendance.date)}
+                  </Text>{' '}
+                  telah melewati batas waktu pengajuan mandiri (lebih dari 3 hari).
+                </Text>
+
+                <View style={styles.expiredCalloutBox}>
+                  <MaterialIcons name="info" size={20} color="#b91c1c" style={{ marginTop: 2, marginRight: 8 }} />
+                  <Text style={styles.expiredCalloutText}>
+                    Formulir pengajuan mandiri ditutup untuk tanggal ini. Silakan hubungi bagian{' '}
+                    <Text style={{ fontWeight: '700', color: '#991b1b' }}>Personalia / HRD</Text> secara langsung agar dapat diproses dan ditinjau secara manual.
+                  </Text>
+                </View>
+              </View>
+            ) : selectedAttendance && !isSelectedExpired ? (
+              /* FORMULIR INPUT KLARIFIKASI (JIKA MASIH <= 3 HARI) */
               <View style={styles.formCard}>
                 <View style={styles.sectionHeaderRow}>
                   <MaterialIcons name="edit-note" size={22} color={theme.colors.primary} />
                   <Text style={styles.sectionTitle}>Detail Alasan & Berkas</Text>
                 </View>
 
-                {/* 1. PILIHAN JENIS KETERLAMBATAN */}
-                <Text style={styles.inputLabel}>
-                  Jenis Keterlambatan <Text style={styles.requiredStar}>*</Text>
+                {/* 1. PILIHAN JENIS KETERLAMBATAN (OTOMATIS BERDASARKAN PRESENSI) */}
+                <View style={styles.lateTypeHeaderRow}>
+                  <Text style={styles.inputLabel}>
+                    Jenis Keterlambatan <Text style={styles.requiredStar}>*</Text>
+                  </Text>
+                  <View style={styles.autoDetectedBadge}>
+                    <MaterialIcons name="auto-awesome" size={12} color="#ea580c" style={{ marginRight: 3 }} />
+                    <Text style={styles.autoDetectedBadgeText}>Otomatis Terpilih</Text>
+                  </View>
+                </View>
+                <Text style={styles.inputHint}>
+                  Jenis disesuaikan otomatis dengan catatan presensi {formatDateIndo(selectedAttendance.date)}.
                 </Text>
                 <View style={styles.lateTypeGrid}>
                   <TouchableOpacity
@@ -924,9 +1067,9 @@ export default function LateExplanationScreen() {
                       color={lateType === 'masuk' ? '#ea580c' : theme.colors.textMuted}
                     />
                     <Text style={[styles.lateTypeBtnTitle, lateType === 'masuk' && styles.lateTypeBtnTitleActive]}>
-                      Terlambat Masuk
+                      Masuk
                     </Text>
-                    <Text style={styles.lateTypeBtnSubtitle}>Jam masuk kerja pagi</Text>
+                    <Text style={styles.lateTypeBtnSubtitle}>Telat Masuk</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -943,9 +1086,28 @@ export default function LateExplanationScreen() {
                       color={lateType === 'istirahat' ? '#ea580c' : theme.colors.textMuted}
                     />
                     <Text style={[styles.lateTypeBtnTitle, lateType === 'istirahat' && styles.lateTypeBtnTitleActive]}>
-                      Terlambat Istirahat
+                      Istirahat
                     </Text>
-                    <Text style={styles.lateTypeBtnSubtitle}>Kembali dari istirahat</Text>
+                    <Text style={styles.lateTypeBtnSubtitle}>Telat Istirahat</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.lateTypeBtn,
+                      lateType === 'pulang_cepat' && styles.lateTypeBtnActive
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => setLateType('pulang_cepat')}
+                  >
+                    <MaterialIcons
+                      name="logout"
+                      size={20}
+                      color={lateType === 'pulang_cepat' ? '#ea580c' : theme.colors.textMuted}
+                    />
+                    <Text style={[styles.lateTypeBtnTitle, lateType === 'pulang_cepat' && styles.lateTypeBtnTitleActive]}>
+                      Pulang Cepat
+                    </Text>
+                    <Text style={styles.lateTypeBtnSubtitle}>Pulang Awal</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -1105,8 +1267,6 @@ export default function LateExplanationScreen() {
                     labelStatus = 'Ditolak';
                   }
 
-                  const isLateMasuk = item.late_type === 'masuk';
-
                   return (
                     <View key={item.id || `${item.attendance_id}-${index}`} style={styles.historyItemCard}>
                       {/* Header Item: Tanggal & Status Badge */}
@@ -1124,17 +1284,38 @@ export default function LateExplanationScreen() {
 
                       {/* Sub-Header: Jenis Keterlambatan */}
                       <View style={styles.historyTypeRow}>
-                        <View style={[styles.historyTypeBadge, isLateMasuk ? { backgroundColor: '#fee2e2' } : { backgroundColor: '#ffedd5' }]}>
-                          <MaterialIcons
-                            name={isLateMasuk ? 'login' : 'restaurant'}
-                            size={13}
-                            color={isLateMasuk ? '#991b1b' : '#9a3412'}
-                            style={{ marginRight: 4 }}
-                          />
-                          <Text style={[styles.historyTypeBadgeText, isLateMasuk ? { color: '#991b1b' } : { color: '#9a3412' }]}>
-                            {isLateMasuk ? 'Terlambat Masuk' : 'Terlambat Istirahat'}
-                          </Text>
-                        </View>
+                        {(() => {
+                          let typeLabel = 'Terlambat Masuk';
+                          let typeIcon: 'login' | 'restaurant' | 'logout' = 'login';
+                          let typeBg = '#fee2e2';
+                          let typeColor = '#991b1b';
+
+                          if (item.late_type === 'pulang_cepat') {
+                            typeLabel = 'Pulang Cepat';
+                            typeIcon = 'logout';
+                            typeBg = '#fef3c7';
+                            typeColor = '#92400e';
+                          } else if (item.late_type === 'istirahat') {
+                            typeLabel = 'Terlambat Istirahat';
+                            typeIcon = 'restaurant';
+                            typeBg = '#ffedd5';
+                            typeColor = '#9a3412';
+                          }
+
+                          return (
+                            <View style={[styles.historyTypeBadge, { backgroundColor: typeBg }]}>
+                              <MaterialIcons
+                                name={typeIcon}
+                                size={13}
+                                color={typeColor}
+                                style={{ marginRight: 4 }}
+                              />
+                              <Text style={[styles.historyTypeBadgeText, { color: typeColor }]}>
+                                {typeLabel}
+                              </Text>
+                            </View>
+                          );
+                        })()}
 
                         {item.created_at && (
                           <Text style={styles.historyCreatedDate}>
@@ -1364,6 +1545,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#eff6ff',
     borderColor: theme.colors.primary
   },
+  attendanceOptionCardExpired: {
+    backgroundColor: '#fffbfa',
+    borderColor: '#fed7aa'
+  },
+  attendanceOptionCardActiveExpired: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#ef4444'
+  },
   optionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1382,6 +1571,12 @@ const styles = StyleSheet.create({
   },
   radioCircleActive: {
     borderColor: theme.colors.primary
+  },
+  radioCircleExpired: {
+    borderColor: '#fca5a5'
+  },
+  radioCircleActiveExpired: {
+    borderColor: '#ef4444'
   },
   radioDot: {
     width: 10,
@@ -1465,6 +1660,95 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 4,
     lineHeight: 17
+  },
+
+  // EXPIRED PERSONALIA CARD
+  expiredCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1.5,
+    borderColor: '#fca5a5',
+    elevation: 2,
+    shadowColor: '#dc2626',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    marginBottom: 16
+  },
+  expiredHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12
+  },
+  expiredIconBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#fee2e2',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  expiredPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#fee2e2',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginBottom: 4
+  },
+  expiredPillText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#b91c1c'
+  },
+  expiredCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#991b1b'
+  },
+  expiredCardDesc: {
+    fontSize: 13,
+    color: '#475569',
+    lineHeight: 19,
+    marginBottom: 14
+  },
+  expiredCalloutBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: 12,
+    padding: 12
+  },
+  expiredCalloutText: {
+    flex: 1,
+    fontSize: 12.5,
+    color: '#991b1b',
+    lineHeight: 18
+  },
+
+  lateTypeHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4
+  },
+  autoDetectedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12
+  },
+  autoDetectedBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#ea580c'
   },
 
   // FORM CARD
