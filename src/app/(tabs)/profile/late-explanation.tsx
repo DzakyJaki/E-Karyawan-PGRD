@@ -124,6 +124,53 @@ export default function LateExplanationScreen() {
     return dateStr;
   };
 
+  // Helper: Format date-time string YYYY-MM-DD HH:mm:ss to Indonesian
+  const formatDateTimeIndo = (dateTimeStr?: string | null) => {
+    if (!dateTimeStr) return '';
+    try {
+      const clean = dateTimeStr.replace('T', ' ').replace('Z', '');
+      const [datePart, timePart] = clean.split(' ');
+      const p = datePart.split('-');
+      if (p.length === 3) {
+        const d = parseInt(p[2], 10);
+        const m = parseInt(p[1], 10) - 1;
+        const y = p[0];
+        const monthShort = MONTH_NAMES_ID[m] ? MONTH_NAMES_ID[m].substring(0, 3) : p[1];
+        const timeShort = timePart ? timePart.substring(0, 5) : '';
+        return `${d} ${monthShort} ${y}${timeShort ? `, ${timeShort} WIB` : ''}`;
+      }
+    } catch {}
+    return dateTimeStr.substring(0, 16);
+  };
+
+  // Riwayat Pengajuan State: Hide / Show (Collapsible)
+  const [expandedHistoryKeys, setExpandedHistoryKeys] = useState<Record<string, boolean>>({});
+
+  const toggleExpandHistory = (key: string) => {
+    setExpandedHistoryKeys(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const expandAllHistory = () => {
+    const all: Record<string, boolean> = {};
+    historyList.forEach((item, index) => {
+      const k = item.id ? `id_${item.id}` : `att_${item.attendance_id}_${item.late_type}_${index}`;
+      all[k] = true;
+    });
+    setExpandedHistoryKeys(all);
+  };
+
+  const collapseAllHistory = () => {
+    const all: Record<string, boolean> = {};
+    historyList.forEach((item, index) => {
+      const k = item.id ? `id_${item.id}` : `att_${item.attendance_id}_${item.late_type}_${index}`;
+      all[k] = false;
+    });
+    setExpandedHistoryKeys(all);
+  };
+
   // Helper: Difference in days between today and attendance date
   // 0 = Hari ini, 1 = Kemarin, 2 = 2 hari lalu, 3 = 3 hari lalu
   const getDaysDiff = useCallback((dateStr: string): number => {
@@ -1437,69 +1484,121 @@ export default function LateExplanationScreen() {
                 </TouchableOpacity>
               </View>
             ) : (
-              <View style={styles.historyListWrapper}>
-                {historyList.map((item, index) => {
-                  const s = (item.status || 'pending').toLowerCase();
-                  let bgStatus = '#fef3c7';
-                  let colStatus = '#b45309';
-                  let labelStatus = 'Masih menunggu review personelia';
-                  let statusIcon: 'schedule' | 'check-circle' | 'cancel' = 'schedule';
+              <View>
+                {/* TOOLBAR RINGKASAN & TOGGLE JIKA PENGAJUAN > 1 */}
+                {historyList.length > 1 && (
+                  <View style={styles.historyToolbarRow}>
+                    <Text style={styles.historyToolbarCount}>
+                      Total: <Text style={{ fontWeight: '700', color: '#1e293b' }}>{historyList.length}</Text> Pengajuan
+                    </Text>
+                    <View style={styles.historyToolbarActions}>
+                      <TouchableOpacity
+                        style={styles.btnToolbarAction}
+                        onPress={expandAllHistory}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialIcons name="unfold-more" size={14} color={theme.colors.primary} />
+                        <Text style={styles.btnToolbarActionText}>Buka Semua</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.btnToolbarAction}
+                        onPress={collapseAllHistory}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialIcons name="unfold-less" size={14} color="#64748b" />
+                        <Text style={[styles.btnToolbarActionText, { color: '#64748b' }]}>Tutup Semua</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
 
-                  if (s.includes('approv') || s.includes('setuju') || s.includes('terima')) {
-                    bgStatus = '#dcfce7';
-                    colStatus = '#15803d';
-                    labelStatus = item.late_type === 'masuk'
-                      ? 'Disetujui personelia (tidak dipotong gaji)'
-                      : 'Disetujui personelia';
-                    statusIcon = 'check-circle';
-                  } else if (s.includes('reject') || s.includes('tolak')) {
-                    bgStatus = '#fee2e2';
-                    colStatus = '#b91c1c';
-                    labelStatus = 'Ditolak personelia';
-                    statusIcon = 'cancel';
-                  }
+                <View style={styles.historyListWrapper}>
+                  {historyList.map((item, index) => {
+                    const s = (item.status || 'pending').toLowerCase();
+                    const isApp = s.includes('approv') || s.includes('setuju') || s.includes('terima');
+                    const isRej = s.includes('reject') || s.includes('tolak');
 
-                  return (
-                    <View key={item.id || `${item.attendance_id}-${index}`} style={styles.historyItemCard}>
-                      {/* Header Item: Tanggal & Status Badge */}
-                      <View style={styles.historyCardHeader}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
-                          <MaterialIcons name="event" size={16} color={theme.colors.primary} style={{ marginRight: 6 }} />
-                          <Text style={styles.historyDateTitle}>
-                            {formatDateIndo(item.attendance_date)}
-                          </Text>
-                        </View>
-                        <View style={[styles.statusBadge, { backgroundColor: bgStatus, flexDirection: 'row', alignItems: 'center' }]}>
-                          <MaterialIcons name={statusIcon} size={13} color={colStatus} style={{ marginRight: 4 }} />
-                          <Text style={[styles.statusBadgeText, { color: colStatus }]}>{labelStatus}</Text>
-                        </View>
-                      </View>
+                    let bgStatus = '#fef3c7';
+                    let colStatus = '#b45309';
+                    let shortStatus = 'Menunggu';
+                    let fullStatus = 'Masih menunggu review personelia';
+                    let statusIcon: 'schedule' | 'check-circle' | 'cancel' = 'schedule';
 
-                      {/* Sub-Header: Jenis Keterlambatan */}
-                      <View style={styles.historyTypeRow}>
-                        {(() => {
-                          let typeLabel = 'Terlambat Masuk';
-                          let typeIcon: 'login' | 'restaurant' | 'logout' = 'login';
-                          let typeBg = '#fee2e2';
-                          let typeColor = '#991b1b';
+                    if (isApp) {
+                      bgStatus = '#dcfce7';
+                      colStatus = '#15803d';
+                      shortStatus = 'Disetujui';
+                      fullStatus = item.late_type === 'masuk'
+                        ? 'Disetujui personelia (tidak dipotong gaji)'
+                        : 'Disetujui personelia';
+                      statusIcon = 'check-circle';
+                    } else if (isRej) {
+                      bgStatus = '#fee2e2';
+                      colStatus = '#b91c1c';
+                      shortStatus = 'Ditolak';
+                      fullStatus = 'Ditolak personelia';
+                      statusIcon = 'cancel';
+                    }
 
-                          if (item.late_type === 'pulang_cepat') {
-                            typeLabel = 'Pulang Cepat';
-                            typeIcon = 'logout';
-                            typeBg = '#fef3c7';
-                            typeColor = '#92400e';
-                          } else if (item.late_type === 'istirahat') {
-                            typeLabel = 'Telat Masuk Istirahat';
-                            typeIcon = 'restaurant';
-                            typeBg = '#ffedd5';
-                            typeColor = '#9a3412';
-                          }
+                    const itemKey = item.id ? `id_${item.id}` : `att_${item.attendance_id}_${item.late_type}_${index}`;
+                    const isExpanded = expandedHistoryKeys[itemKey] ?? (historyList.length === 1 || index === 0);
 
-                          return (
+                    let typeLabel = 'Terlambat Masuk';
+                    let typeIcon: 'login' | 'restaurant' | 'logout' = 'login';
+                    let typeBg = '#fee2e2';
+                    let typeColor = '#991b1b';
+
+                    if (item.late_type === 'pulang_cepat') {
+                      typeLabel = 'Pulang Cepat';
+                      typeIcon = 'logout';
+                      typeBg = '#fef3c7';
+                      typeColor = '#92400e';
+                    } else if (item.late_type === 'istirahat') {
+                      typeLabel = 'Telat Masuk Istirahat';
+                      typeIcon = 'restaurant';
+                      typeBg = '#ffedd5';
+                      typeColor = '#9a3412';
+                    }
+
+                    const hasAdminNote = Boolean(item.catatan || item.admin_note || item.catatan_penolakan);
+
+                    return (
+                      <View key={itemKey} style={styles.historyItemCard}>
+                        {/* HEADER KARTU (BISA DIKETUK UNTUK HIDE/SHOW) */}
+                        <TouchableOpacity
+                          style={styles.historyCardHeaderTouchable}
+                          onPress={() => toggleExpandHistory(itemKey)}
+                          activeOpacity={0.7}
+                        >
+                          {/* Baris 1: Tanggal & Badge Status Compact + Chevron */}
+                          <View style={styles.historyHeaderTopRow}>
+                            <View style={styles.historyDateWrapper}>
+                              <MaterialIcons name="event" size={17} color={theme.colors.primary} style={{ marginRight: 6 }} />
+                              <Text style={styles.historyDateTitle} numberOfLines={1}>
+                                {formatDateIndo(item.attendance_date)}
+                              </Text>
+                            </View>
+                            <View style={styles.historyHeaderRightBadges}>
+                              <View style={[styles.statusBadgeCompact, { backgroundColor: bgStatus }]}>
+                                <MaterialIcons name={statusIcon} size={12} color={colStatus} style={{ marginRight: 3 }} />
+                                <Text style={[styles.statusBadgeText, { color: colStatus }]}>{shortStatus}</Text>
+                              </View>
+                              <View style={[styles.chevronBox, isExpanded && styles.chevronBoxActive]}>
+                                <MaterialIcons
+                                  name={isExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                                  size={18}
+                                  color={isExpanded ? theme.colors.primary : '#64748b'}
+                                />
+                              </View>
+                            </View>
+                          </View>
+
+                          {/* Baris 2: Sub-Header Jenis Keterlambatan & Waktu Pengajuan */}
+                          <View style={styles.historyTypeRow}>
                             <View style={[styles.historyTypeBadge, { backgroundColor: typeBg }]}>
                               <MaterialIcons
                                 name={typeIcon}
-                                size={13}
+                                size={12}
                                 color={typeColor}
                                 style={{ marginRight: 4 }}
                               />
@@ -1507,83 +1606,135 @@ export default function LateExplanationScreen() {
                                 {typeLabel}
                               </Text>
                             </View>
-                          );
-                        })()}
 
-                        {item.created_at && (
-                          <Text style={styles.historyCreatedDate}>
-                            Diajukan: {item.created_at.substring(0, 16)}
-                          </Text>
+                            {item.created_at && (
+                              <Text style={styles.historyCreatedDate}>
+                                Diajukan: {formatDateTimeIndo(item.created_at)}
+                              </Text>
+                            )}
+                          </View>
+
+                          {/* Baris 3: Cuplikan Alasan saat Tertutup (Hide / Collapsed) */}
+                          {!isExpanded && (
+                            <View style={styles.historyCollapsedPreviewBox}>
+                              <Text style={styles.historyCollapsedReasonText} numberOfLines={2}>
+                                <Text style={{ fontWeight: '700', color: '#64748b' }}>Alasan: </Text>
+                                {item.alasan}
+                              </Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+
+                        {/* DETAIL LENGKAP SAAT TERBUKA (SHOW / EXPANDED) */}
+                        {isExpanded && (
+                          <View style={styles.historyExpandedContent}>
+                            <View style={styles.historyDivider} />
+
+                            {/* Status Lengkap Personelia */}
+                            <View
+                              style={[
+                                styles.historyFullStatusBox,
+                                { backgroundColor: bgStatus, borderColor: colStatus + '40' }
+                              ]}
+                            >
+                              <MaterialIcons
+                                name={statusIcon}
+                                size={16}
+                                color={colStatus}
+                                style={{ marginRight: 6, marginTop: 1 }}
+                              />
+                              <View style={{ flex: 1 }}>
+                                <Text style={[styles.historyFullStatusTitle, { color: colStatus }]}>
+                                  {fullStatus}
+                                </Text>
+                                <Text style={[styles.historyFullStatusSubtitle, { color: colStatus }]}>
+                                  {isApp
+                                    ? 'Pengajuan klarifikasi telah disetujui oleh tim personalia.'
+                                    : isRej
+                                    ? 'Pengajuan ditolak. Silakan periksa catatan penolakan di bawah.'
+                                    : 'Pengajuan sedang dalam antrean peninjauan oleh tim personalia.'}
+                                </Text>
+                              </View>
+                            </View>
+
+                            {/* Alasan Lengkap */}
+                            <View style={styles.historyReasonBox}>
+                              <Text style={styles.historyReasonLabel}>Alasan Keterlambatan:</Text>
+                              <Text style={styles.historyReasonContent}>{item.alasan}</Text>
+                            </View>
+
+                            {/* Lampiran Foto Bukti */}
+                            {item.bukti_file && (
+                              <View style={styles.historyFileRow}>
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    openImageModal(item.bukti_file, `Bukti Foto - ${formatDateIndo(item.attendance_date)}`)
+                                  }
+                                  activeOpacity={0.8}
+                                >
+                                  <Image
+                                    source={{ uri: getAttachmentFullUrl(item.bukti_file) }}
+                                    style={styles.historyThumbnail}
+                                  />
+                                </TouchableOpacity>
+                                <View style={{ flex: 1, marginLeft: 10 }}>
+                                  <Text style={styles.historyFileName} numberOfLines={1}>
+                                    Foto Bukti Keterlambatan
+                                  </Text>
+                                  <Text style={styles.historyFileSub}>Ketuk untuk melihat foto</Text>
+                                </View>
+                                <TouchableOpacity
+                                  style={styles.btnViewFile}
+                                  onPress={() =>
+                                    openImageModal(item.bukti_file, `Bukti Foto - ${formatDateIndo(item.attendance_date)}`)
+                                  }
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={styles.btnViewFileText}>Lihat Foto</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+
+                            {/* Tanggapan / Catatan Penolakan dari Personelia */}
+                            {hasAdminNote && (
+                              <View
+                                style={[
+                                  styles.historyAdminNoteBox,
+                                  isRej ? { backgroundColor: '#fee2e2', borderColor: '#fca5a5' } : null
+                                ]}
+                              >
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                                  <MaterialIcons
+                                    name={isRej ? 'error-outline' : 'chat'}
+                                    size={15}
+                                    color={isRej ? '#991b1b' : '#b45309'}
+                                    style={{ marginRight: 5 }}
+                                  />
+                                  <Text
+                                    style={[
+                                      styles.historyAdminNoteTitle,
+                                      isRej ? { color: '#991b1b' } : null
+                                    ]}
+                                  >
+                                    {isRej ? 'Catatan Penolakan dari Personelia:' : 'Tanggapan Personelia:'}
+                                  </Text>
+                                </View>
+                                <Text
+                                  style={[
+                                    styles.historyAdminNoteText,
+                                    isRej ? { color: '#7f1d1d' } : null
+                                  ]}
+                                >
+                                  {item.catatan_penolakan || item.catatan || item.admin_note}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
                         )}
                       </View>
-
-                      {/* Alasan */}
-                      <View style={styles.historyReasonBox}>
-                        <Text style={styles.historyReasonLabel}>Alasan:</Text>
-                        <Text style={styles.historyReasonContent}>{item.alasan}</Text>
-                      </View>
-
-                      {/* Lampiran Foto Bukti */}
-                      {item.bukti_file && (
-                        <View style={styles.historyFileRow}>
-                          <TouchableOpacity
-                            onPress={() => openImageModal(item.bukti_file, `Bukti Foto - ${formatDateIndo(item.attendance_date)}`)}
-                            activeOpacity={0.8}
-                          >
-                            <Image
-                              source={{ uri: getAttachmentFullUrl(item.bukti_file) }}
-                              style={styles.historyThumbnail}
-                            />
-                          </TouchableOpacity>
-                          <View style={{ flex: 1, marginLeft: 10 }}>
-                            <Text style={styles.historyFileName} numberOfLines={1}>
-                              Foto Bukti Keterlambatan
-                            </Text>
-                            <Text style={styles.historyFileSub}>Ketuk untuk melihat foto</Text>
-                          </View>
-                          <TouchableOpacity
-                            style={styles.btnViewFile}
-                            onPress={() => openImageModal(item.bukti_file, `Bukti Foto - ${formatDateIndo(item.attendance_date)}`)}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.btnViewFileText}>Lihat Foto</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-
-                      {/* Tanggapan / Catatan Penolakan dari Personelia */}
-                      {(item.catatan || item.admin_note || item.catatan_penolakan) && (
-                        <View
-                          style={[
-                            styles.historyAdminNoteBox,
-                            s.includes('reject') || s.includes('tolak')
-                              ? { backgroundColor: '#fee2e2', borderColor: '#fca5a5' }
-                              : null
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.historyAdminNoteTitle,
-                              s.includes('reject') || s.includes('tolak') ? { color: '#991b1b' } : null
-                            ]}
-                          >
-                            {s.includes('reject') || s.includes('tolak')
-                              ? 'Catatan Penolakan dari Personelia:'
-                              : 'Tanggapan Personelia:'}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.historyAdminNoteText,
-                              s.includes('reject') || s.includes('tolak') ? { color: '#7f1d1d' } : null
-                            ]}
-                          >
-                            {item.catatan_penolakan || item.catatan || item.admin_note}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
+                    );
+                  })}
+                </View>
               </View>
             )}
           </View>
@@ -2250,13 +2401,45 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
 
+  // TAB 2: TOOLBAR & ACCORDION RIWAYAT
+  historyToolbarRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 4
+  },
+  historyToolbarCount: {
+    fontSize: 12.5,
+    color: '#64748b'
+  },
+  historyToolbarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  btnToolbarAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
+    gap: 4
+  },
+  btnToolbarActionText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.colors.primary
+  },
+
   historyListWrapper: {
     gap: 12
   },
   historyItemCard: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
-    padding: 16,
+    padding: 14,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     elevation: 2,
@@ -2265,46 +2448,115 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 }
   },
-  historyCardHeader: {
+  historyCardHeaderTouchable: {
+    width: '100%'
+  },
+  historyHeaderTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8
+    marginBottom: 6
+  },
+  historyDateWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8
   },
   historyDateTitle: {
-    fontSize: 14,
+    fontSize: 14.5,
     fontWeight: '700',
     color: '#1e293b'
   },
-  statusBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 14
+  historyHeaderRightBadges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
+  statusBadgeCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 12
   },
   statusBadgeText: {
     fontSize: 11,
     fontWeight: '700'
   },
+  chevronBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  chevronBoxActive: {
+    backgroundColor: '#e0e7ff'
+  },
   historyTypeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10
+    marginBottom: 4
   },
   historyTypeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
     borderRadius: 6
   },
   historyTypeBadgeText: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '700'
   },
   historyCreatedDate: {
     fontSize: 11,
     color: '#94a3b8'
+  },
+
+  // PREVIEW COLLAPSED
+  historyCollapsedPreviewBox: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 9,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#f1f5f9'
+  },
+  historyCollapsedReasonText: {
+    fontSize: 12,
+    color: '#334155',
+    lineHeight: 17
+  },
+  // EXPANDED CONTENT
+  historyExpandedContent: {
+    marginTop: 6
+  },
+  historyDivider: {
+    height: 1,
+    backgroundColor: '#f1f5f9',
+    marginBottom: 10
+  },
+  historyFullStatusBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 10,
+    marginBottom: 10
+  },
+  historyFullStatusTitle: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    marginBottom: 2
+  },
+  historyFullStatusSubtitle: {
+    fontSize: 11,
+    opacity: 0.9,
+    lineHeight: 15
   },
   historyReasonBox: {
     backgroundColor: '#f8fafc',
