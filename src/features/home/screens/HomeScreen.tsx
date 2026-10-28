@@ -227,6 +227,19 @@ export function HomeScreen() {
     ? `${todayDayName} • Libur / Tutup`
     : `${todayDayName} • ${workStartTime} - ${workEndTime} WIB`;
 
+  const isTodayEarlyLeave = useMemo(() => {
+    if (!todayAttendance?.clock_out || !todayAttendance?.is_early_leave) return false;
+    const [outH, outM] = todayAttendance.clock_out.substring(0, 5).split(':').map(Number);
+    const [endH, endM] = workEndTime.split(':').map(Number);
+    if (!isNaN(outH) && !isNaN(outM) && !isNaN(endH) && !isNaN(endM)) {
+      const targetMin = Math.min(endH * 60 + endM, 17 * 60);
+      if (outH * 60 + outM >= targetMin) {
+        return false;
+      }
+    }
+    return Boolean(todayAttendance.is_early_leave);
+  }, [todayAttendance, workEndTime]);
+
   const getAttendanceBadge = () => {
     if (!isBranchLocationConfigured) {
       return { bg: '#fee2e2', text: '#991b1b', label: 'Lokasi Belum Diatur' };
@@ -503,9 +516,9 @@ export function HomeScreen() {
                   {checkOutTime}
                 </Text>
                 <Text style={styles.mainLabel}>Jam Pulang</Text>
-                <Text style={[styles.mainSubStatus, todayAttendance?.is_early_leave && { color: '#b45309', fontWeight: 'bold' }]} numberOfLines={1}>
+                <Text style={[styles.mainSubStatus, isTodayEarlyLeave && { color: '#b45309', fontWeight: 'bold' }]} numberOfLines={1}>
                   {todayAttendance?.clock_out
-                    ? (todayAttendance.is_early_leave ? `Cepat ${todayAttendance.early_leave_minutes ? `${todayAttendance.early_leave_minutes}m` : ''}` : 'Selesai Kerja')
+                    ? (isTodayEarlyLeave ? `Cepat ${todayAttendance.early_leave_minutes ? `${todayAttendance.early_leave_minutes}m` : ''}` : 'Selesai Kerja')
                     : 'Belum Pulang'}
                 </Text>
               </View>

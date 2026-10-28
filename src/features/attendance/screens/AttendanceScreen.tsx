@@ -1299,27 +1299,72 @@ export function AttendanceScreen() {
     }
   };
 
+  // Validasi pintar status pulang cepat (Early Leave) sesuai jadwal resmi
+  const isItemEarlyLeave = useCallback((item?: AttendanceItem | null) => {
+    if (!item?.clock_out || !item?.is_early_leave) return false;
+
+    const clockOutStr = item.clock_out.substring(0, 5);
+    const [outH, outM] = clockOutStr.split(':').map(Number);
+    if (isNaN(outH) || isNaN(outM)) return Boolean(item.is_early_leave);
+
+    let scheduledEnd = '17:00';
+    if (item.date) {
+      try {
+        const itemDate = new Date(item.date + 'T00:00:00');
+        const dayOfWeek = itemDate.getDay();
+        const daySched = Array.isArray(workTimeData?.schedules)
+          ? workTimeData.schedules.find((s: any) => Number(s.day_of_week) === dayOfWeek)
+          : null;
+        if (daySched?.work_end_time) {
+          scheduledEnd = normalizeTimeString(daySched.work_end_time, daySched.work_start_time);
+        } else if (workTimeData?.work_end_time) {
+          scheduledEnd = normalizeTimeString(workTimeData.work_end_time, workTimeData.work_start_time);
+        }
+      } catch {
+        scheduledEnd = '17:00';
+      }
+    } else if (workTimeData?.work_end_time) {
+      scheduledEnd = normalizeTimeString(workTimeData.work_end_time, workTimeData.work_start_time);
+    }
+
+    const [schedH, schedM] = scheduledEnd.split(':').map(Number);
+    if (!isNaN(schedH) && !isNaN(schedM)) {
+      const outTotalMin = outH * 60 + outM;
+      const schedTotalMin = schedH * 60 + schedM;
+      // Target jam pulang kantor adalah 17:00 atau jam jadwal
+      const targetMin = Math.min(schedTotalMin, 17 * 60);
+      // Jika jam checkout sudah mencapai atau melewati jadwal pulang resmi,
+      // maka diakui Tepat Waktu (bukan Pulang Cepat)
+      if (outTotalMin >= targetMin) {
+        return false;
+      }
+    }
+
+    return Boolean(item.is_early_leave);
+  }, [workTimeData]);
+
   const getStatusColor = (status: string, item?: AttendanceItem) => {
-    if (item?.is_late && item?.is_early_leave) {
+    const isEarly = isItemEarlyLeave(item);
+    if (item?.is_late && isEarly) {
       return { bg: '#fee2e2', text: '#991b1b', label: 'Telat & Cepat' };
     }
     if (item?.is_late) {
       const lateTxt = item.late_minutes ? `Telat ${item.late_minutes}m` : 'Terlambat';
       return { bg: '#fee2e2', text: '#991b1b', label: lateTxt };
     }
-    if (item?.is_early_leave) {
-      const earlyTxt = item.early_leave_minutes ? `Cepat ${item.early_leave_minutes}m` : 'Pulang Cepat';
+    if (isEarly) {
+      const earlyTxt = item?.early_leave_minutes ? `Cepat ${item.early_leave_minutes}m` : 'Pulang Cepat';
       return { bg: '#fef3c7', text: '#92400e', label: earlyTxt };
     }
     const s = (status || '').toLowerCase();
-    if (s === 'hadir' || s === 'tepat waktu') {
+    if (s === 'hadir' || s === 'tepat waktu' || (!isEarly && item?.clock_out)) {
       return { bg: '#dcfce7', text: '#166534', label: 'Tepat Waktu' };
     }
     if (s === 'terlambat') {
       return { bg: '#fee2e2', text: '#991b1b', label: 'Terlambat' };
     }
     if (s === 'pulang cepat') {
-      return { bg: '#fef3c7', text: '#92400e', label: 'Pulang Cepat' };
+      return isEarly ? { bg: '#fef3c7', text: '#92400e', label: 'Pulang Cepat' } : { bg: '#dcfce7', text: '#166534', label: 'Tepat Waktu' };
     }
     if (s === 'lembur') {
       return { bg: '#e0e7ff', text: '#3730a3', label: 'Lembur' };
@@ -1703,9 +1748,9 @@ export function AttendanceScreen() {
                 )}
               </View>
 
-              <View style={{ flex: 1, paddingRight: 8 }}>
+              <View style={{ flex: 1, paddingRight: 6 }}>
                 <Text style={styles.smartBtnTitle}>{smartAction.title}</Text>
-                <Text style={styles.smartBtnSub} numberOfLines={1}>{smartAction.sub}</Text>
+                <Text style={styles.smartBtnSub} numberOfLines={2}>{smartAction.sub}</Text>
               </View>
 
               {!smartAction.isCompleted && !smartAction.disabled && (
@@ -1922,31 +1967,36 @@ export function AttendanceScreen() {
                       </View>
 
                       {/* Kolom 4: Pulang */}
-                      <View style={[
-                        styles.timeGridCol,
-                        item.clock_out && item.is_early_leave && { backgroundColor: '#fffbeb', borderColor: '#fde68a', borderWidth: 1 }
-                      ]}>
-                        <View style={styles.timeGridColHeader}>
-                          <View style={[styles.gridDot, { backgroundColor: theme.colors.danger }]} />
-                          <Text style={styles.gridLabel} numberOfLines={1}>Pulang</Text>
-                        </View>
-                        <Text style={[
-                          styles.gridTime,
-                          item.clock_out && item.is_early_leave && { color: '#b45309' }
-                        ]}>
-                          {item.clock_out ? item.clock_out.substring(0, 5) : '--:--'}
-                        </Text>
-                        <Text style={[
-                          styles.gridSubText,
-                          item.clock_out
-                            ? (item.is_early_leave ? { color: '#b45309' } : { color: '#16a34a' })
-                            : { color: theme.colors.textMuted }
-                        ]} numberOfLines={1}>
-                          {item.clock_out
-                            ? (item.is_early_leave ? formatDurationBadge(item.early_leave_minutes, 'Cepat') : 'Tepat Waktu')
-                            : '--'}
-                        </Text>
-                      </View>
+                      {(() => {
+                        const isEarly = isItemEarlyLeave(item);
+                        return (
+                          <View style={[
+                            styles.timeGridCol,
+                            item.clock_out && isEarly && { backgroundColor: '#fffbeb', borderColor: '#fde68a', borderWidth: 1 }
+                          ]}>
+                            <View style={styles.timeGridColHeader}>
+                              <View style={[styles.gridDot, { backgroundColor: theme.colors.danger }]} />
+                              <Text style={styles.gridLabel} numberOfLines={1}>Pulang</Text>
+                            </View>
+                            <Text style={[
+                              styles.gridTime,
+                              item.clock_out && isEarly && { color: '#b45309' }
+                            ]}>
+                              {item.clock_out ? item.clock_out.substring(0, 5) : '--:--'}
+                            </Text>
+                            <Text style={[
+                              styles.gridSubText,
+                              item.clock_out
+                                ? (isEarly ? { color: '#b45309' } : { color: '#16a34a' })
+                                : { color: theme.colors.textMuted }
+                            ]} numberOfLines={1}>
+                              {item.clock_out
+                                ? (isEarly ? formatDurationBadge(item.early_leave_minutes, 'Cepat') : 'Tepat Waktu')
+                                : '--'}
+                            </Text>
+                          </View>
+                        );
+                      })()}
                     </View>
 
                     {/* Chips Info Tambahan (Lembur, Catatan) */}
@@ -2497,7 +2547,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255,255,255,0.92)',
     marginTop: 3,
-    fontWeight: '500'
+    fontWeight: '500',
+    lineHeight: 16
   },
   smartBtnArrowWrap: {
     width: 32,
