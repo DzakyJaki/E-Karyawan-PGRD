@@ -10,7 +10,8 @@ import {
   RefreshControl,
   Image,
   Platform,
-  Modal
+  Modal,
+  KeyboardAvoidingView
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -56,6 +57,8 @@ export interface LateExplanationItem {
   catatan?: string | null;
   catatan_penolakan?: string | null;
   admin_note?: string | null;
+  reviewed_at?: string | null;
+  reviewed_by?: number | string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }
@@ -152,24 +155,6 @@ export default function LateExplanationScreen() {
       ...prev,
       [key]: !prev[key]
     }));
-  };
-
-  const expandAllHistory = () => {
-    const all: Record<string, boolean> = {};
-    historyList.forEach((item, index) => {
-      const k = item.id ? `id_${item.id}` : `att_${item.attendance_id}_${item.late_type}_${index}`;
-      all[k] = true;
-    });
-    setExpandedHistoryKeys(all);
-  };
-
-  const collapseAllHistory = () => {
-    const all: Record<string, boolean> = {};
-    historyList.forEach((item, index) => {
-      const k = item.id ? `id_${item.id}` : `att_${item.attendance_id}_${item.late_type}_${index}`;
-      all[k] = false;
-    });
-    setExpandedHistoryKeys(all);
   };
 
   // Helper: Difference in days between today and attendance date
@@ -514,6 +499,8 @@ export default function LateExplanationScreen() {
                     catatan_penolakan: exp.catatan_penolakan || null,
                     catatan: exp.catatan_penolakan || exp.catatan || exp.admin_note || null,
                     admin_note: exp.catatan_penolakan || exp.admin_note || null,
+                    reviewed_at: exp.reviewed_at || exp.late_approved_at || exp.approved_at || exp.rejected_at || json.attendance?.late_approved_at || null,
+                    reviewed_by: exp.reviewed_by || exp.late_approved_by || exp.approved_by || json.attendance?.late_approved_by || null,
                     created_at: exp.created_at || null,
                     updated_at: exp.updated_at || null
                   });
@@ -534,6 +521,8 @@ export default function LateExplanationScreen() {
                   catatan_penolakan: d.catatan_penolakan || null,
                   catatan: d.catatan_penolakan || d.catatan || d.admin_note || null,
                   admin_note: d.catatan_penolakan || d.admin_note || null,
+                  reviewed_at: d.reviewed_at || d.late_approved_at || d.approved_at || d.rejected_at || json.attendance?.late_approved_at || null,
+                  reviewed_by: d.reviewed_by || d.late_approved_by || d.approved_by || json.attendance?.late_approved_by || null,
                   created_at: d.created_at || null,
                   updated_at: d.updated_at || null
                 });
@@ -943,20 +932,25 @@ export default function LateExplanationScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        style={styles.scrollContainer}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[theme.colors.primary]}
-            tintColor={theme.colors.primary}
-          />
-        }
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
+        <ScrollView
+          style={styles.scrollContainer}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[theme.colors.primary]}
+              tintColor={theme.colors.primary}
+            />
+          }
+        >
         {/* ========================================================================= */}
         {/* TAB 1: FORMULIR PENGAJUAN                                                */}
         {/* ========================================================================= */}
@@ -1500,33 +1494,6 @@ export default function LateExplanationScreen() {
               </View>
             ) : (
               <View>
-                {/* TOOLBAR RINGKASAN & TOGGLE JIKA PENGAJUAN > 1 */}
-                {historyList.length > 1 && (
-                  <View style={styles.historyToolbarRow}>
-                    <Text style={styles.historyToolbarCount}>
-                      Total: <Text style={{ fontWeight: '700', color: '#1e293b' }}>{historyList.length}</Text> Pengajuan
-                    </Text>
-                    <View style={styles.historyToolbarActions}>
-                      <TouchableOpacity
-                        style={styles.btnToolbarAction}
-                        onPress={expandAllHistory}
-                        activeOpacity={0.7}
-                      >
-                        <MaterialIcons name="unfold-more" size={14} color={theme.colors.primary} />
-                        <Text style={styles.btnToolbarActionText}>Buka Semua</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.btnToolbarAction}
-                        onPress={collapseAllHistory}
-                        activeOpacity={0.7}
-                      >
-                        <MaterialIcons name="unfold-less" size={14} color="#64748b" />
-                        <Text style={[styles.btnToolbarActionText, { color: '#64748b' }]}>Tutup Semua</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-
                 <View style={styles.historyListWrapper}>
                   {historyList.map((item, index) => {
                     const s = (item.status || 'pending').toLowerCase();
@@ -1669,6 +1636,11 @@ export default function LateExplanationScreen() {
                                     ? 'Pengajuan ditolak. Silakan periksa catatan penolakan di bawah.'
                                     : 'Pengajuan sedang dalam antrean peninjauan oleh tim personalia.'}
                                 </Text>
+                                {Boolean(item.reviewed_at || (isApp || isRej ? item.updated_at : null)) && (
+                                  <Text style={[styles.historyFullStatusSubtitle, { color: colStatus, marginTop: 4, fontWeight: '700' }]}>
+                                    Ditinjau pada: {formatDateTimeIndo(item.reviewed_at || item.updated_at)}
+                                  </Text>
+                                )}
                               </View>
                             </View>
 
@@ -1742,6 +1714,36 @@ export default function LateExplanationScreen() {
                                 >
                                   {item.catatan_penolakan || item.catatan || item.admin_note}
                                 </Text>
+
+                                {/* Tanggal & Waktu Review (reviewed_at) */}
+                                {Boolean(item.reviewed_at || (isApp || isRej ? item.updated_at : null)) && (
+                                  <View
+                                    style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      marginTop: 8,
+                                      paddingTop: 6,
+                                      borderTopWidth: 1,
+                                      borderTopColor: isRej ? '#fca5a5' : '#fed7aa'
+                                    }}
+                                  >
+                                    <MaterialIcons
+                                      name="event-available"
+                                      size={13}
+                                      color={isRej ? '#991b1b' : '#b45309'}
+                                      style={{ marginRight: 4 }}
+                                    />
+                                    <Text
+                                      style={{
+                                        fontSize: 11,
+                                        fontWeight: '600',
+                                        color: isRej ? '#991b1b' : '#b45309'
+                                      }}
+                                    >
+                                      Ditinjau pada: {formatDateTimeIndo(item.reviewed_at || item.updated_at)}
+                                    </Text>
+                                  </View>
+                                )}
                               </View>
                             )}
                           </View>
@@ -1757,6 +1759,7 @@ export default function LateExplanationScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+    </KeyboardAvoidingView>
 
       {/* POPUP MODAL LIHAT FOTO BUKTI (BUKAN BUKA LINK) */}
       <Modal
@@ -2276,14 +2279,15 @@ const styles = StyleSheet.create({
 
   // TEXT AREA INPUT
   textAreaInput: {
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#cbd5e1',
-    borderRadius: 12,
+    borderRadius: 10,
     padding: 12,
     fontSize: 13.5,
     color: '#0f172a',
-    minHeight: 90
+    minHeight: 85,
+    textAlignVertical: 'top'
   },
   inputError: {
     borderColor: '#ef4444',
@@ -2425,38 +2429,7 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
 
-  // TAB 2: TOOLBAR & ACCORDION RIWAYAT
-  historyToolbarRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-    paddingHorizontal: 4
-  },
-  historyToolbarCount: {
-    fontSize: 12.5,
-    color: '#64748b'
-  },
-  historyToolbarActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8
-  },
-  btnToolbarAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 8,
-    gap: 4
-  },
-  btnToolbarActionText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: theme.colors.primary
-  },
-
+  // TAB 2: ACCORDION RIWAYAT
   historyListWrapper: {
     gap: 12
   },
