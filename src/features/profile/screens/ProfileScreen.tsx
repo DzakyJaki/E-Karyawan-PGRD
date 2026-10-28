@@ -202,6 +202,7 @@ export function ProfileScreen() {
       title: 'Administrasi',
       items: [
         { icon: 'assignment-ind', label: 'Data Karyawan', color: theme.colors.primary, route: '/profile/employee-data' },
+        { icon: 'history-toggle-off', label: 'Form Keterlambatan', color: '#ea580c', route: '/profile/late-explanation' },
       ]
     },
     {

@@ -27,6 +27,12 @@ export default function ProfileLayout() {
         }}
       />
       <Stack.Screen
+        name="late-explanation"
+        options={{
+          title: 'Form Keterlambatan',
+        }}
+      />
+      <Stack.Screen
         name="salary"
         options={{
           title: 'Slip Gaji',
