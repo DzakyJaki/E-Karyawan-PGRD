@@ -10,13 +10,12 @@ import {
   RefreshControl,
   Image,
   Platform,
-  Linking
+  Modal
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import * as WebBrowser from 'expo-web-browser';
 import { theme } from '../../../core/theme';
 import { useToast } from '../../../core/ToastContext';
 import { suspendAppLock, resumeAppLock } from '../../../components/AppLock';
@@ -101,6 +100,11 @@ export default function LateExplanationScreen() {
 
   // Form Errors
   const [formErrors, setFormErrors] = useState<{ alasan?: string; attendance?: string }>({});
+
+  // Image Preview Modal State
+  const [previewModalVisible, setPreviewModalVisible] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewImageTitle, setPreviewImageTitle] = useState<string>('Bukti Foto');
 
   // Helper: Format date string YYYY-MM-DD to Indonesian
   const formatDateIndo = (dateStr?: string) => {
@@ -201,7 +205,91 @@ export default function LateExplanationScreen() {
     };
   }, [checkIsAttendanceLate]);
 
-  // Menampilkan seluruh presensi yang tercatat terlambat / pulang cepat
+  // Helper: Format file size
+  const formatBytes = (bytes?: number | null) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  // Helper: Ambil URL lengkap untuk berkas lampiran
+  const getAttachmentFullUrl = useCallback((rawUrl?: string | null): string => {
+    if (!rawUrl) return '';
+    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://') || rawUrl.startsWith('file://')) {
+      return rawUrl;
+    }
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://dieselmart.pagaruyungdiesel.cloud';
+    const cleanBase = apiUrl.replace(/\/+$/, '');
+    const cleanPath = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
+    const hasStorage = cleanPath.startsWith('/storage/');
+    return `${cleanBase}${hasStorage ? cleanPath : `/storage${cleanPath}`}`;
+  }, []);
+
+  // Helper: Buka modal popup pratinjau gambar (bukan buka link eksternal)
+  const openImageModal = useCallback((imageUrl?: string | null, title?: string) => {
+    if (!imageUrl) return;
+    const fullUrl = getAttachmentFullUrl(imageUrl);
+    setPreviewImageUrl(fullUrl);
+    setPreviewImageTitle(title || 'Bukti Foto Keterlambatan');
+    setPreviewModalVisible(true);
+  }, [getAttachmentFullUrl]);
+
+  // Helper: Status pengajuan form untuk suatu presensi
+  // Aturan:
+  // 1. Jika presensi diajukan (pending) -> tidak tampil lagi ke formulir
+  // 2. Jika disetujui (approved) -> tidak tampil lagi ke formulir
+  // 3. Jika ditolak 1 kali -> kembali ke formulir keterlambatan
+  // 4. Jika ditolak >= 2 kali -> tidak bisa lagi masuk ke formulir keterlambatan (hanya di riwayat saja)
+  const getAttendanceSubmissionStatus = useCallback((attendanceId: number) => {
+    const exps = historyList.filter(h => h.attendance_id === attendanceId);
+    if (exps.length === 0) {
+      return {
+        hasSubmitted: false,
+        hasPending: false,
+        hasApproved: false,
+        rejectedCount: 0,
+        canResubmit: true,
+        lastExplanation: null
+      };
+    }
+
+    const hasPending = exps.some(e => {
+      const s = (e.status || '').toLowerCase();
+      return s.includes('pending') || s.includes('menunggu');
+    });
+
+    const hasApproved = exps.some(e => {
+      const s = (e.status || '').toLowerCase();
+      return s.includes('approv') || s.includes('setuju');
+    });
+
+    const rejectedExps = exps.filter(e => {
+      const s = (e.status || '').toLowerCase();
+      return s.includes('reject') || s.includes('tolak');
+    });
+    const rejectedCount = rejectedExps.length;
+
+    // Dapat diajukan jika: tidak pending, tidak approved, dan jumlah penolakan < 2
+    const canResubmit = !hasPending && !hasApproved && rejectedCount < 2;
+
+    const sortedExps = [...exps].sort((a, b) => {
+      const dateA = a.created_at || '';
+      const dateB = b.created_at || '';
+      return dateB.localeCompare(dateA);
+    });
+
+    return {
+      hasSubmitted: true,
+      hasPending,
+      hasApproved,
+      rejectedCount,
+      canResubmit,
+      lastExplanation: sortedExps[0] || null
+    };
+  }, [historyList]);
+
+  // Menampilkan catatan presensi yang masih boleh diajukan formulir keterlambatannya
   const lateAttendances = useMemo(() => {
     return attendances
       .filter(item => {
@@ -211,18 +299,16 @@ export default function LateExplanationScreen() {
 
         // HANYA yang memiliki keterlambatan (masuk, istirahat, atau pulang cepat)
         const { isLate } = checkIsAttendanceLate(item);
-        return isLate;
+        if (!isLate) return false;
+
+        // Saring berdasarkan status pengajuan:
+        // - Jika sedang pending / approved / ditolak >= 2x -> tidak tampil di formulir
+        // - Jika belum diajukan ATAU ditolak 1x -> tampil di formulir
+        const statusInfo = getAttendanceSubmissionStatus(item.id);
+        return statusInfo.canResubmit;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [attendances, getDaysDiff, checkIsAttendanceLate]);
-
-  // Helper: Format file size
-  const formatBytes = (bytes?: number | null) => {
-    if (!bytes) return '';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-  };
+  }, [attendances, getDaysDiff, checkIsAttendanceLate, getAttendanceSubmissionStatus]);
 
   // Helper: Load local cached explanation history
   const loadLocalHistory = async (): Promise<LateExplanationItem[]> => {
@@ -316,20 +402,6 @@ export default function LateExplanationScreen() {
       setRefreshing(false);
     }
   }, [getDaysDiff, selectedAttendanceId, checkIsAttendanceLate]);
-
-  // Fetch Full History of Late Explanations
-  // Helper: Ambil URL lengkap untuk berkas lampiran
-  const getAttachmentFullUrl = (rawUrl?: string | null): string => {
-    if (!rawUrl) return '';
-    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://') || rawUrl.startsWith('file://')) {
-      return rawUrl;
-    }
-    const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://dieselmart.pagaruyungdiesel.cloud';
-    const cleanBase = apiUrl.replace(/\/+$/, '');
-    const cleanPath = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
-    const hasStorage = cleanPath.startsWith('/storage/');
-    return `${cleanBase}${hasStorage ? cleanPath : `/storage${cleanPath}`}`;
-  };
 
   // Fetch Full History of Late Explanations dari backend (GET /api/my/presensi/{attendanceId}/late-explanation)
   const fetchAllExplanationsHistory = useCallback(async (currentAttendances: AttendanceRecord[]) => {
@@ -506,16 +578,6 @@ export default function LateExplanationScreen() {
     return getDaysDiff(selectedAttendance.date) > 3;
   }, [selectedAttendance, getDaysDiff]);
 
-  // Cek apakah presensi yang dipilih sudah pernah diajukan formulirnya
-  const selectedExistingExplanation = useMemo(() => {
-    if (!selectedAttendance) return null;
-    return (
-      historyList.find(h => h.attendance_id === selectedAttendance.id && h.late_type === lateType) ||
-      historyList.find(h => h.attendance_id === selectedAttendance.id) ||
-      null
-    );
-  }, [selectedAttendance, historyList, lateType]);
-
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchAttendances();
@@ -523,32 +585,6 @@ export default function LateExplanationScreen() {
       await fetchAllExplanationsHistory(attendances);
     }
     setRefreshing(false);
-  };
-
-  // Helper untuk membuka berkas lampiran
-  const openAttachmentFile = async (rawUrl?: string | null) => {
-    if (!rawUrl) return;
-    try {
-      const fullUrl = getAttachmentFullUrl(rawUrl);
-
-      const isPdf = fullUrl.toLowerCase().includes('.pdf');
-      if (isPdf) {
-        await WebBrowser.openBrowserAsync(fullUrl, {
-          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
-          toolbarColor: theme.colors.primary,
-          showTitle: true
-        });
-      } else {
-        const canOpen = await Linking.canOpenURL(fullUrl);
-        if (canOpen) {
-          await Linking.openURL(fullUrl);
-        } else {
-          await WebBrowser.openBrowserAsync(fullUrl);
-        }
-      }
-    } catch {
-      showToast({ title: 'Gagal Membuka Berkas', message: 'Tautan berkas tidak valid atau tidak dapat diakses.', type: 'error' });
-    }
   };
 
   // Attachments handlers
@@ -918,12 +954,19 @@ export default function LateExplanationScreen() {
 
                     const { isLateMasuk, isLateBreak, isEarlyLeave } = checkIsAttendanceLate(item);
 
+                    const statusInfo = getAttendanceSubmissionStatus(item.id);
+                    const isResubmit = statusInfo.rejectedCount === 1;
+
                     let badgeText = '';
                     let badgeBg = '';
                     let badgeColor = '';
                     let isPersonalia = false;
 
-                    if (isExpired) {
+                    if (isResubmit) {
+                      badgeText = 'Pengajuan Ulang (1x Ditolak)';
+                      badgeBg = '#fef3c7';
+                      badgeColor = '#b45309';
+                    } else if (isExpired) {
                       badgeText = 'Hubungi Personalia';
                       badgeBg = '#fee2e2';
                       badgeColor = '#dc2626';
@@ -1132,81 +1175,31 @@ export default function LateExplanationScreen() {
                   <Text style={styles.sectionTitle}>Detail Alasan & Berkas</Text>
                 </View>
 
-                {/* NOTIFIKASI JIKA SUDAH PERNAH DIAJUKAN */}
-                {selectedExistingExplanation && (
-                  <View
-                    style={[
-                      styles.alreadySubmittedBanner,
-                      selectedExistingExplanation.status?.toLowerCase().includes('approv') ||
-                      selectedExistingExplanation.status?.toLowerCase().includes('setuju')
-                        ? { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }
-                        : selectedExistingExplanation.status?.toLowerCase().includes('reject') ||
-                          selectedExistingExplanation.status?.toLowerCase().includes('tolak')
-                        ? { backgroundColor: '#fef2f2', borderColor: '#fecaca' }
-                        : { backgroundColor: '#fffbeb', borderColor: '#fde68a' }
-                    ]}
-                  >
-                    <MaterialIcons
-                      name={
-                        selectedExistingExplanation.status?.toLowerCase().includes('approv') ||
-                        selectedExistingExplanation.status?.toLowerCase().includes('setuju')
-                          ? 'check-circle'
-                          : selectedExistingExplanation.status?.toLowerCase().includes('reject') ||
-                            selectedExistingExplanation.status?.toLowerCase().includes('tolak')
-                          ? 'cancel'
-                          : 'hourglass-top'
-                      }
-                      size={20}
-                      color={
-                        selectedExistingExplanation.status?.toLowerCase().includes('approv') ||
-                        selectedExistingExplanation.status?.toLowerCase().includes('setuju')
-                          ? '#16a34a'
-                          : selectedExistingExplanation.status?.toLowerCase().includes('reject') ||
-                            selectedExistingExplanation.status?.toLowerCase().includes('tolak')
-                          ? '#dc2626'
-                          : '#d97706'
-                      }
-                      style={{ marginRight: 8, marginTop: 2 }}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          styles.alreadySubmittedTitle,
-                          {
-                            color:
-                              selectedExistingExplanation.status?.toLowerCase().includes('approv') ||
-                              selectedExistingExplanation.status?.toLowerCase().includes('setuju')
-                                ? '#15803d'
-                                : selectedExistingExplanation.status?.toLowerCase().includes('reject') ||
-                                  selectedExistingExplanation.status?.toLowerCase().includes('tolak')
-                                ? '#991b1b'
-                                : '#b45309'
-                          }
-                        ]}
-                      >
-                        Klarifikasi Sudah Pernah Diajukan (
-                        {selectedExistingExplanation.status?.toLowerCase().includes('approv') ||
-                        selectedExistingExplanation.status?.toLowerCase().includes('setuju')
-                          ? 'Disetujui HRD'
-                          : selectedExistingExplanation.status?.toLowerCase().includes('reject') ||
-                            selectedExistingExplanation.status?.toLowerCase().includes('tolak')
-                          ? 'Ditolak HRD'
-                          : 'Menunggu Persetujuan HRD'}
-                        )
+                {/* BANNER PENGAJUAN ULANG (JIKA SEBELUMNYA DITOLAK 1 KALI) */}
+                {(() => {
+                  const st = selectedAttendance ? getAttendanceSubmissionStatus(selectedAttendance.id) : null;
+                  if (!st || st.rejectedCount !== 1 || !st.lastExplanation) return null;
+
+                  return (
+                    <View style={styles.resubmitNoticeBox}>
+                      <View style={styles.resubmitHeaderRow}>
+                        <MaterialIcons name="replay" size={18} color="#b45309" style={{ marginRight: 6 }} />
+                        <Text style={styles.resubmitNoticeTitle}>Pengajuan Ulang (Kesempatan ke-2 / Terakhir)</Text>
+                      </View>
+                      <Text style={styles.resubmitNoticeDesc}>
+                        Pengajuan sebelumnya ditolak oleh personelia. Silakan lengkapi alasan atau foto bukti yang lebih jelas.
                       </Text>
-                      <Text style={styles.alreadySubmittedDesc} numberOfLines={2}>
-                        "{selectedExistingExplanation.alasan}"
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.btnViewInHistory}
-                        onPress={() => setActiveTab('riwayat')}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.btnViewInHistoryText}>Lihat Detail di Tab Riwayat →</Text>
-                      </TouchableOpacity>
+                      {st.lastExplanation.catatan_penolakan ? (
+                        <View style={styles.resubmitRejectNoteBox}>
+                          <Text style={styles.resubmitRejectNoteLabel}>Catatan Penolakan dari Personelia:</Text>
+                          <Text style={styles.resubmitRejectNoteText}>
+                            {st.lastExplanation.catatan_penolakan}
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
-                  </View>
-                )}
+                  );
+                })()}
 
                 {/* 1. PILIHAN JENIS KETERLAMBATAN (OTOMATIS BERDASARKAN PRESENSI) */}
                 <View style={styles.lateTypeHeaderRow}>
@@ -1343,16 +1336,25 @@ export default function LateExplanationScreen() {
                   {/* Attachment Preview Card */}
                   {attachmentUri && (
                     <View style={styles.attachmentPreviewCard}>
-                      <Image source={{ uri: attachmentUri }} style={styles.previewThumbnail} />
+                      <TouchableOpacity
+                        onPress={() => openImageModal(attachmentUri, 'Bukti Foto yang Dipilih')}
+                        activeOpacity={0.8}
+                      >
+                        <Image source={{ uri: attachmentUri }} style={styles.previewThumbnail} />
+                      </TouchableOpacity>
 
-                      <View style={styles.previewInfo}>
+                      <TouchableOpacity
+                        style={styles.previewInfo}
+                        onPress={() => openImageModal(attachmentUri, 'Bukti Foto yang Dipilih')}
+                        activeOpacity={0.8}
+                      >
                         <Text style={styles.previewFileName} numberOfLines={1}>
                           {attachmentName || 'bukti_foto.jpg'}
                         </Text>
                         <Text style={styles.previewFileSize}>
-                          {formatBytes(attachmentSize)}
+                          {formatBytes(attachmentSize)} (Ketuk untuk melihat foto)
                         </Text>
-                      </View>
+                      </TouchableOpacity>
 
                       <TouchableOpacity
                         style={styles.btnRemoveAttachment}
@@ -1424,29 +1426,35 @@ export default function LateExplanationScreen() {
                   const s = (item.status || 'pending').toLowerCase();
                   let bgStatus = '#fef3c7';
                   let colStatus = '#b45309';
-                  let labelStatus = 'Menunggu Persetujuan';
+                  let labelStatus = 'Masih menunggu review personelia';
+                  let statusIcon: 'schedule' | 'check-circle' | 'cancel' = 'schedule';
 
                   if (s.includes('approv') || s.includes('setuju') || s.includes('terima')) {
                     bgStatus = '#dcfce7';
                     colStatus = '#15803d';
-                    labelStatus = 'Disetujui HRD';
+                    labelStatus = item.late_type === 'masuk'
+                      ? 'Disetujui personelia (tidak dipotong gaji)'
+                      : 'Disetujui personelia';
+                    statusIcon = 'check-circle';
                   } else if (s.includes('reject') || s.includes('tolak')) {
                     bgStatus = '#fee2e2';
                     colStatus = '#b91c1c';
-                    labelStatus = 'Ditolak';
+                    labelStatus = 'Ditolak personelia';
+                    statusIcon = 'cancel';
                   }
 
                   return (
                     <View key={item.id || `${item.attendance_id}-${index}`} style={styles.historyItemCard}>
                       {/* Header Item: Tanggal & Status Badge */}
                       <View style={styles.historyCardHeader}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
                           <MaterialIcons name="event" size={16} color={theme.colors.primary} style={{ marginRight: 6 }} />
                           <Text style={styles.historyDateTitle}>
                             {formatDateIndo(item.attendance_date)}
                           </Text>
                         </View>
-                        <View style={[styles.statusBadge, { backgroundColor: bgStatus }]}>
+                        <View style={[styles.statusBadge, { backgroundColor: bgStatus, flexDirection: 'row', alignItems: 'center' }]}>
+                          <MaterialIcons name={statusIcon} size={13} color={colStatus} style={{ marginRight: 4 }} />
                           <Text style={[styles.statusBadgeText, { color: colStatus }]}>{labelStatus}</Text>
                         </View>
                       </View>
@@ -1502,10 +1510,15 @@ export default function LateExplanationScreen() {
                       {/* Lampiran Foto Bukti */}
                       {item.bukti_file && (
                         <View style={styles.historyFileRow}>
-                          <Image
-                            source={{ uri: getAttachmentFullUrl(item.bukti_file) }}
-                            style={styles.historyThumbnail}
-                          />
+                          <TouchableOpacity
+                            onPress={() => openImageModal(item.bukti_file, `Bukti Foto - ${formatDateIndo(item.attendance_date)}`)}
+                            activeOpacity={0.8}
+                          >
+                            <Image
+                              source={{ uri: getAttachmentFullUrl(item.bukti_file) }}
+                              style={styles.historyThumbnail}
+                            />
+                          </TouchableOpacity>
                           <View style={{ flex: 1, marginLeft: 10 }}>
                             <Text style={styles.historyFileName} numberOfLines={1}>
                               Foto Bukti Keterlambatan
@@ -1514,7 +1527,7 @@ export default function LateExplanationScreen() {
                           </View>
                           <TouchableOpacity
                             style={styles.btnViewFile}
-                            onPress={() => openAttachmentFile(item.bukti_file)}
+                            onPress={() => openImageModal(item.bukti_file, `Bukti Foto - ${formatDateIndo(item.attendance_date)}`)}
                             activeOpacity={0.7}
                           >
                             <Text style={styles.btnViewFileText}>Lihat Foto</Text>
@@ -1522,7 +1535,7 @@ export default function LateExplanationScreen() {
                         </View>
                       )}
 
-                      {/* Tanggapan / Catatan HRD */}
+                      {/* Tanggapan / Catatan Penolakan dari Personelia */}
                       {(item.catatan || item.admin_note || item.catatan_penolakan) && (
                         <View
                           style={[
@@ -1539,8 +1552,8 @@ export default function LateExplanationScreen() {
                             ]}
                           >
                             {s.includes('reject') || s.includes('tolak')
-                              ? 'Catatan Penolakan HRD:'
-                              : 'Tanggapan HRD:'}
+                              ? 'Catatan Penolakan dari Personelia:'
+                              : 'Tanggapan Personelia:'}
                           </Text>
                           <Text
                             style={[
@@ -1562,6 +1575,57 @@ export default function LateExplanationScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* POPUP MODAL LIHAT FOTO BUKTI (BUKAN BUKA LINK) */}
+      <Modal
+        visible={previewModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setPreviewModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalBox}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                <MaterialIcons name="image" size={20} color="#ffffff" style={{ marginRight: 8 }} />
+                <Text style={styles.modalHeaderTitle} numberOfLines={1}>
+                  {previewImageTitle}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseCircle}
+                onPress={() => setPreviewModalVisible(false)}
+                activeOpacity={0.7}
+              >
+                <MaterialIcons name="close" size={20} color="#ffffff" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Modal Image Body */}
+            <View style={styles.modalImageContainer}>
+              {previewImageUrl ? (
+                <Image
+                  source={{ uri: previewImageUrl }}
+                  style={styles.modalFullImage}
+                  resizeMode="contain"
+                />
+              ) : null}
+            </View>
+
+            {/* Modal Footer */}
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setPreviewModalVisible(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalCloseButtonText}>Tutup</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -2328,5 +2392,114 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '700',
     color: theme.colors.primary
+  },
+  resubmitNoticeBox: {
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16
+  },
+  resubmitHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4
+  },
+  resubmitNoticeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#b45309'
+  },
+  resubmitNoticeDesc: {
+    fontSize: 12,
+    color: '#78350f',
+    lineHeight: 17,
+    marginBottom: 6
+  },
+  resubmitRejectNoteBox: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fef3c7',
+    padding: 8,
+    marginTop: 4
+  },
+  resubmitRejectNoteLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#dc2626',
+    marginBottom: 2
+  },
+  resubmitRejectNoteText: {
+    fontSize: 12,
+    color: '#991b1b',
+    lineHeight: 16
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16
+  },
+  modalBox: {
+    width: '100%',
+    maxHeight: '85%',
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#334155'
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155'
+  },
+  modalHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#ffffff'
+  },
+  modalCloseCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#334155',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  modalImageContainer: {
+    width: '100%',
+    height: 380,
+    backgroundColor: '#0f172a',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  modalFullImage: {
+    width: '100%',
+    height: '100%'
+  },
+  modalFooter: {
+    padding: 12,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#334155'
+  },
+  modalCloseButton: {
+    backgroundColor: '#334155',
+    paddingHorizontal: 24,
+    paddingVertical: 8,
+    borderRadius: 8
+  },
+  modalCloseButtonText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700'
   }
 });
