@@ -14,7 +14,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleBreakReminders } from '../../../core/breakNotificationService';
 import { theme } from '../../../core/theme';
-import { getEffectiveScheduleForToday, normalizeTimeString } from '../../../core/timeUtils';
+import { 
+  calculateBreakDeadline, 
+  calculateBreakLateDetails, 
+  getEffectiveScheduleForToday, 
+  normalizeTimeString 
+} from '../../../core/timeUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -30,6 +35,9 @@ interface TodayAttendance {
   late_minutes?: number | null;
   is_early_leave?: boolean | null;
   early_leave_minutes?: number | null;
+  late_status?: string | null;
+  early_leave_status?: string | null;
+  break_late_status?: string | null;
 }
 
 export function HomeScreen() {
@@ -212,9 +220,9 @@ export function HomeScreen() {
 
   // Resolusi jadwal aktif hari ini (otomatis membaca array schedules hari Jumat / hari kerja lainnya)
   const activeSchedule = useMemo(() => {
-    return getEffectiveScheduleForToday(workTimeData);
-  }, [workTimeData]);
-  const effectiveWork = activeSchedule || workTimeData;
+    return getEffectiveScheduleForToday(workTimeData || profileData?.branch);
+  }, [workTimeData, profileData?.branch]);
+  const effectiveWork = activeSchedule || workTimeData || profileData?.branch;
 
   const todayDayName = effectiveWork?.day_name || new Date().toLocaleDateString('id-ID', { weekday: 'long' });
   const isWorkClosedToday = Boolean(effectiveWork?.is_closed_today);
@@ -228,14 +236,18 @@ export function HomeScreen() {
     : `${todayDayName} • ${workStartTime} - ${workEndTime} WIB`;
 
   const isTodayEarlyLeave = useMemo(() => {
-    if (!todayAttendance?.clock_out || !todayAttendance?.is_early_leave) return false;
+    if (!todayAttendance?.clock_out) return false;
+    if (todayAttendance?.early_leave_status && todayAttendance.early_leave_status.toLowerCase().includes('tepat')) {
+      return false;
+    }
     const [outH, outM] = todayAttendance.clock_out.substring(0, 5).split(':').map(Number);
     const [endH, endM] = workEndTime.split(':').map(Number);
     if (!isNaN(outH) && !isNaN(outM) && !isNaN(endH) && !isNaN(endM)) {
-      const targetMin = Math.min(endH * 60 + endM, 17 * 60);
-      if (outH * 60 + outM >= targetMin) {
+      const schedTotalMin = endH * 60 + endM;
+      if (outH * 60 + outM >= schedTotalMin) {
         return false;
       }
+      return true;
     }
     return Boolean(todayAttendance.is_early_leave);
   }, [todayAttendance, workEndTime]);
@@ -282,7 +294,7 @@ export function HomeScreen() {
       return `${start} - ${end} WIB`;
     }
 
-    // 2. Tipe Kantor (Jam Mulai kantor_break_from s/d batas kantor_break_until)
+    // 2. Tipe Kantor (Jam Mulai kantor_break_from s/d batas kantor_break_until & DURASI kantor_break_duration)
     if (effectiveWork?.break_type === 'kantor' || effectiveWork?.kantor_break_until || effectiveWork?.kantor_break_from) {
       const from = effectiveWork?.kantor_break_from
         ? effectiveWork.kantor_break_from.substring(0, 5)
@@ -290,7 +302,8 @@ export function HomeScreen() {
       const until = effectiveWork?.kantor_break_until
         ? effectiveWork.kantor_break_until.substring(0, 5)
         : '15:00';
-      return `${from} - ${until} WIB`;
+      const duration = Number(effectiveWork?.kantor_break_duration) || 60;
+      return `${from} - ${until} WIB (Maks. ${duration} Menit)`;
     }
 
     if (effectiveWork?.break_end_time) {
@@ -300,25 +313,10 @@ export function HomeScreen() {
 
   const todayBreakLate = useMemo(() => {
     if (!todayAttendance?.break_end) return null;
-    const limit = (effectiveWork?.break_type === 'shift' || (effectiveWork?.break_start_time && effectiveWork?.break_end_time && effectiveWork?.break_type !== 'kantor'))
-      ? (effectiveWork?.break_end_time?.substring(0, 5))
-      : (effectiveWork?.kantor_break_until?.substring(0, 5) || '15:00');
-
-    if (!limit) return { isLate: false, lateMinutes: 0 };
-
-    const [endH, endM] = todayAttendance.break_end.split(':').map(Number);
-    const [limH, limM] = limit.split(':').map(Number);
-
-    if (isNaN(endH) || isNaN(endM) || isNaN(limH) || isNaN(limM)) {
+    if (todayAttendance?.break_late_status && todayAttendance.break_late_status.toLowerCase().includes('tepat')) {
       return { isLate: false, lateMinutes: 0 };
     }
-
-    const diffMinutes = (endH * 60 + endM) - (limH * 60 + limM);
-
-    return {
-      isLate: diffMinutes > 0,
-      lateMinutes: diffMinutes > 0 ? diffMinutes : 0
-    };
+    return calculateBreakLateDetails(todayAttendance?.break_start, todayAttendance.break_end, effectiveWork);
   }, [todayAttendance, effectiveWork]);
 
   // Cek apakah waktu saat ini berada dalam rentang 5 menit sebelum / sesudah jam istirahat / masuk
@@ -388,6 +386,38 @@ export function HomeScreen() {
 
     // 2. Skenario Kantor
     if (effectiveWork.break_type === 'kantor' || effectiveWork.kantor_break_until) {
+      const duration = Number(effectiveWork.kantor_break_duration) || 60;
+
+      // Jika karyawan sedang istirahat, pantau durasi maksimal istirahat (kantor_break_duration)
+      if (todayAttendance?.break_start && !todayAttendance?.break_end) {
+        const deadlineStr = calculateBreakDeadline(todayAttendance.break_start, duration, effectiveWork.kantor_break_until);
+        const [deadH, deadM] = (deadlineStr || '15:00').split(':').map(Number);
+        if (!isNaN(deadH) && !isNaN(deadM)) {
+          const dDead = new Date(now);
+          dDead.setHours(deadH, deadM, 0, 0);
+          const diffMinutes = Math.round((dDead.getTime() - nowMs) / 60000);
+
+          if (diffMinutes > 0 && diffMinutes <= 5) {
+            return {
+              title: `Istirahat Berakhir ${diffMinutes} Menit Lagi`,
+              message: `Waktu istirahat Anda (maks. ${duration}m) selesai pukul ${deadlineStr} WIB. Bersiap kembali bekerja.`,
+              color: '#d97706',
+              bgColor: '#fffbeb',
+              borderColor: '#fde68a'
+            };
+          }
+          if (diffMinutes <= 0 && diffMinutes >= -15) {
+            return {
+              title: `Durasi Istirahat (${duration}m) Telah Berakhir`,
+              message: `Batas istirahat Anda telah lewat (${deadlineStr} WIB). Segera selesaikan presensi rehat!`,
+              color: '#dc2626',
+              bgColor: '#fef2f2',
+              borderColor: '#fecaca'
+            };
+          }
+        }
+      }
+
       const untilParts = (effectiveWork.kantor_break_until || '15:00').split(':');
       if (untilParts.length >= 2) {
         const dLimit = new Date(now);

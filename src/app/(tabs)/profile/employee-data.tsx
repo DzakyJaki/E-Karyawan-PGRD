@@ -26,8 +26,17 @@ interface UserProfileData {
     phone: string;
     address: string;
     gender: string;
+    birth_place?: string | null;
+    birth_date?: string | null;
+    religion?: string | null;
+    marital_status?: string | null;
+    education?: string | null;
+    emergency_contact_name?: string | null;
+    emergency_contact_phone?: string | null;
     joined_date: string;
     status: string | { id?: number; name?: string; label?: string };
+    bank_name?: string | null;
+    bank_account_number?: string | null;
     position?: string | { id?: number; name?: string; department?: string; level?: number };
     deduction_types?: DeductionType[];
   };
@@ -120,6 +129,17 @@ export default function EmployeeDataScreen() {
   const displayDepartment = typeof posRaw === 'object' && posRaw !== null
     ? (posRaw.department || '')
     : '';
+  const displayLevel = typeof posRaw === 'object' && posRaw !== null && posRaw.level != null
+    ? `Level ${posRaw.level}`
+    : '';
+
+  const bankInfo = employee?.bank_name && employee?.bank_account_number
+    ? `${employee.bank_name} - ${employee.bank_account_number}`
+    : (employee?.bank_name || employee?.bank_account_number || '');
+
+  const birthInfo = employee?.birth_place && employee?.birth_date
+    ? `${employee.birth_place}, ${formatDateIndo(employee.birth_date)}`
+    : (employee?.birth_date ? formatDateIndo(employee.birth_date) : (employee?.birth_place || ''));
 
   const deductions = Array.isArray(employee?.deduction_types) ? employee.deduction_types : [];
   const allowances = deductions.filter(
@@ -260,7 +280,19 @@ export default function EmployeeDataScreen() {
                 />
                 <InfoRow icon="person" label="Nama Lengkap" value={displayName} />
                 <InfoRow icon="email" label="Email" value={employee?.email || user?.email || '-'} />
+                {birthInfo ? (
+                  <InfoRow icon="cake" label="Tempat / Tanggal Lahir" value={birthInfo} />
+                ) : null}
                 <InfoRow icon="wc" label="Jenis Kelamin" value={employee?.gender || '-'} />
+                {employee?.marital_status ? (
+                  <InfoRow icon="favorite-border" label="Status Pernikahan" value={employee.marital_status} />
+                ) : null}
+                {employee?.religion ? (
+                  <InfoRow icon="auto-awesome" label="Agama" value={employee.religion} />
+                ) : null}
+                {employee?.education ? (
+                  <InfoRow icon="school" label="Pendidikan Terakhir" value={employee.education} />
+                ) : null}
                 <InfoRow icon="home" label="Alamat Domisili" value={employee?.address || '-'} />
                 <InfoRow icon="phone" label="Nomor Handphone" value={employee?.phone || '-'} isLast={true} />
               </View>
@@ -280,6 +312,19 @@ export default function EmployeeDataScreen() {
                 <InfoRow icon="work-outline" label="Jabatan / Posisi" value={displayRole} />
                 {displayDepartment ? (
                   <InfoRow icon="apartment" label="Departemen" value={displayDepartment} />
+                ) : null}
+                {displayLevel ? (
+                  <InfoRow icon="military-tech" label="Level Posisi" value={displayLevel} />
+                ) : null}
+                {bankInfo ? (
+                  <InfoRow icon="account-balance" label="Rekening Bank" value={bankInfo} />
+                ) : null}
+                {employee?.emergency_contact_phone ? (
+                  <InfoRow 
+                    icon="contact-phone" 
+                    label="Kontak Darurat" 
+                    value={employee.emergency_contact_name ? `${employee.emergency_contact_name} (${employee.emergency_contact_phone})` : employee.emergency_contact_phone} 
+                  />
                 ) : null}
 
                 {/* DAFTAR TUNJANGAN & POTONGAN GAJI (DEDUCTION TYPES) DARI DATABASE */}

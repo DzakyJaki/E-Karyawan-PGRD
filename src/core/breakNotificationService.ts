@@ -537,7 +537,56 @@ async function checkAndTriggerActiveReminders() {
     else if (cachedWorkTimeData.break_type === 'kantor' || cachedWorkTimeData.kantor_break_until) {
       const untilLabel = cachedWorkTimeData.kantor_break_until?.substring(0, 5) || '15:00';
       const limitTime = parseTodayTimeString(cachedWorkTimeData.kantor_break_until || '15:00');
+      const durationMin = Number(cachedWorkTimeData.kantor_break_duration) || 60;
 
+      // 1. Pengingat durasi maksimal istirahat (kantor_break_duration) jika sedang istirahat
+      if (hasStartedBreak && cachedTodayAttendance?.break_start) {
+        const breakStartD = parseTodayTimeString(cachedTodayAttendance.break_start);
+        if (breakStartD) {
+          const durationTargetTime = new Date(breakStartD.getTime() + durationMin * 60 * 1000);
+          const tDurBefore = new Date(durationTargetTime.getTime() - 5 * 60 * 1000);
+          const tDurAfter = new Date(durationTargetTime.getTime() + 5 * 60 * 1000);
+
+          const targetH = String(durationTargetTime.getHours()).padStart(2, '0');
+          const targetM = String(durationTargetTime.getMinutes()).padStart(2, '0');
+          const targetLabel = `${targetH}:${targetM}`;
+
+          // 5 Menit Sebelum Durasi Habis
+          if (now.getTime() >= tDurBefore.getTime() && now.getTime() < durationTargetTime.getTime()) {
+            const firedKey = `@alert_v3_${todayStr}_kantor_dur_before_${targetLabel}`;
+            const already = await AsyncStorage.getItem(firedKey);
+            if (!already) {
+              await AsyncStorage.setItem(firedKey, '1');
+              const alertData: BreakAlertEvent = {
+                title: `⏳ 5 Menit Menuju Waktu Masuk (Maks. ${durationMin}m)`,
+                body: `Waktu istirahat Anda tersisa 5 menit lagi (selesai pukul ${targetLabel} WIB). Bersiaplah kembali bekerja.`,
+                type: 'kantor_duration_before',
+                timestamp: Date.now(),
+              };
+              triggerBreakAlert(alertData);
+              sendSystemNotification(alertData.title, alertData.body, 1);
+            }
+          }
+          // Saat / Sesudah Durasi Habis
+          else if (now.getTime() >= durationTargetTime.getTime() && now.getTime() <= tDurAfter.getTime() && !hasEndedBreak) {
+            const firedKey = `@alert_v3_${todayStr}_kantor_dur_now_${targetLabel}`;
+            const already = await AsyncStorage.getItem(firedKey);
+            if (!already) {
+              await AsyncStorage.setItem(firedKey, '1');
+              const alertData: BreakAlertEvent = {
+                title: `🏢 Durasi Istirahat Selesai (${durationMin} Menit)`,
+                body: `Batas durasi istirahat (${durationMin} menit) telah berakhir (${targetLabel} WIB). Segera tekan 'Selesai Istirahat' di aplikasi.`,
+                type: 'kantor_duration_now',
+                timestamp: Date.now(),
+              };
+              triggerBreakAlert(alertData);
+              sendSystemNotification(alertData.title, alertData.body, 1);
+            }
+          }
+        }
+      }
+
+      // 2. Batas Akhir Jendela Istirahat Kantor (kantor_break_until)
       if (limitTime) {
         const tLimitBefore = new Date(limitTime.getTime() - 5 * 60 * 1000);
         const tLimitAfter = new Date(limitTime.getTime() + 5 * 60 * 1000);
@@ -714,7 +763,45 @@ export async function scheduleBreakReminders(
     } else if (workTimeData.break_type === 'kantor' || workTimeData.kantor_break_until) {
       const untilLabel = workTimeData.kantor_break_until?.substring(0, 5) || '15:00';
       const limitTime = parseTodayTimeString(workTimeData.kantor_break_until || '15:00');
+      const durationMin = Number(workTimeData.kantor_break_duration) || 60;
 
+      // 1. Jadwalkan pengingat durasi istirahat jika sedang istirahat
+      if (hasStartedBreak && todayAttendance?.break_start) {
+        const breakStartD = parseTodayTimeString(todayAttendance.break_start);
+        if (breakStartD) {
+          const durationTargetTime = new Date(breakStartD.getTime() + durationMin * 60 * 1000);
+          const tDurBefore = new Date(durationTargetTime.getTime() - 5 * 60 * 1000);
+          const tDurAfter = new Date(durationTargetTime.getTime() + 5 * 60 * 1000);
+
+          const targetH = String(durationTargetTime.getHours()).padStart(2, '0');
+          const targetM = String(durationTargetTime.getMinutes()).padStart(2, '0');
+          const targetLabel = `${targetH}:${targetM}`;
+
+          if (tDurBefore.getTime() > now.getTime()) {
+            const delay = Math.round((tDurBefore.getTime() - now.getTime()) / 1000);
+            const id = await sendSystemNotification(
+              `⏳ 5 Menit Menuju Waktu Masuk (Maks. ${durationMin}m)`,
+              `Waktu istirahat Anda tersisa 5 menit lagi (selesai pukul ${targetLabel} WIB). Bersiaplah kembali bekerja.`,
+              delay,
+              'break-kantor-duration-before'
+            );
+            if (id) scheduledIds.push(id);
+          }
+
+          if (tDurAfter.getTime() > now.getTime()) {
+            const delay = Math.round((tDurAfter.getTime() - now.getTime()) / 1000);
+            const id = await sendSystemNotification(
+              `🏢 Durasi Istirahat Selesai (${durationMin} Menit)`,
+              `Batas durasi istirahat (${durationMin} menit) telah berakhir (${targetLabel} WIB). Segera tekan 'Selesai Istirahat' di aplikasi.`,
+              delay,
+              'break-kantor-duration-now'
+            );
+            if (id) scheduledIds.push(id);
+          }
+        }
+      }
+
+      // 2. Jadwalkan pengingat batas rentang kantor (kantor_break_until)
       if (limitTime) {
         const tLimitBefore = new Date(limitTime.getTime() - 5 * 60 * 1000);
         const tLimitAfter = new Date(limitTime.getTime() + 5 * 60 * 1000);

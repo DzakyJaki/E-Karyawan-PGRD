@@ -106,6 +106,9 @@ export function getEffectiveScheduleForToday(workTimeData: any, targetDate: Date
   const rawOvertime = daySchedule?.overtime_start_time || workTimeData.overtime_start_time || null;
   const rawKantorBreakFrom = daySchedule?.kantor_break_from || workTimeData.kantor_break_from || null;
   const rawKantorBreakUntil = daySchedule?.kantor_break_until || workTimeData.kantor_break_until || null;
+  const rawKantorBreakDuration = daySchedule?.kantor_break_duration != null 
+    ? Number(daySchedule.kantor_break_duration) 
+    : (workTimeData.kantor_break_duration != null ? Number(workTimeData.kantor_break_duration) : 60);
 
   const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
   const dayName = workTimeData.day_name || DAY_NAMES[dayOfWeek];
@@ -120,6 +123,7 @@ export function getEffectiveScheduleForToday(workTimeData: any, targetDate: Date
     overtime_start_time: rawOvertime,
     kantor_break_from: rawKantorBreakFrom,
     kantor_break_until: rawKantorBreakUntil,
+    kantor_break_duration: rawKantorBreakDuration,
     simultaneous_break_start: simultaneousStart,
     simultaneous_break_end: simultaneousEnd,
     has_simultaneous_break: hasSimultaneousBreak,
@@ -131,6 +135,116 @@ export function getEffectiveScheduleForToday(workTimeData: any, targetDate: Date
     is_closed_today: isEffectiveClosedToday,
     is_friday: dayOfWeek === 5,
     day_of_week: dayOfWeek,
+  };
+}
+
+/**
+ * Menghitung jam deadline/batas selesai istirahat berdasarkan jam mulai dan durasi istirahat yang diizinkan (menit).
+ * Contoh: Mulai 12:30, durasi 60m -> Batas kembali 13:30 WIB.
+ * Jika melewati batas akhir rentang kantor (misal 15:00), batas dipotong pada 15:00.
+ */
+export function calculateBreakDeadline(
+  breakStart?: string | null,
+  kantorBreakDuration: number = 60,
+  kantorBreakUntil?: string | null
+): string | null {
+  if (!breakStart) return null;
+  const parts = breakStart.trim().split(':');
+  if (parts.length < 2) return null;
+  const startH = parseInt(parts[0], 10);
+  const startM = parseInt(parts[1], 10);
+  if (isNaN(startH) || isNaN(startM)) return null;
+
+  let targetTotalMin = startH * 60 + startM + kantorBreakDuration;
+
+  if (kantorBreakUntil) {
+    const uParts = kantorBreakUntil.trim().split(':');
+    if (uParts.length >= 2) {
+      let uH = parseInt(uParts[0], 10);
+      const uM = parseInt(uParts[1], 10);
+      if (uH >= 1 && uH <= 7) uH += 12;
+      const uTotal = uH * 60 + uM;
+      if (!isNaN(uTotal) && targetTotalMin > uTotal) {
+        targetTotalMin = uTotal;
+      }
+    }
+  }
+
+  const endH = Math.floor(targetTotalMin / 60) % 24;
+  const endM = targetTotalMin % 60;
+  return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+}
+
+/**
+ * Menghitung status dan durasi keterlambatan istirahat berdasarkan durasi aktual istirahat (break_end - break_start)
+ * terhadap kantor_break_duration (default 60 menit) atau break_end_time shift.
+ */
+export function calculateBreakLateDetails(
+  breakStart?: string | null,
+  breakEnd?: string | null,
+  effectiveSchedule?: any
+): { isLate: boolean; lateMinutes: number; actualDurationMinutes: number; allowedDurationMinutes: number } {
+  if (!breakEnd) {
+    return { isLate: false, lateMinutes: 0, actualDurationMinutes: 0, allowedDurationMinutes: 0 };
+  }
+
+  const isShift = effectiveSchedule?.break_type === 'shift' || (
+    Boolean(effectiveSchedule?.break_start_time) &&
+    Boolean(effectiveSchedule?.break_end_time) &&
+    effectiveSchedule?.break_type !== 'kantor'
+  );
+
+  const [endH, endM] = breakEnd.split(':').map(Number);
+  if (isNaN(endH) || isNaN(endM)) {
+    return { isLate: false, lateMinutes: 0, actualDurationMinutes: 0, allowedDurationMinutes: 0 };
+  }
+  const endTotalMin = endH * 60 + endM;
+
+  // Jika shift / istirahat serentak (misal Jumat 11:30 - 13:30)
+  if (isShift && effectiveSchedule?.break_end_time) {
+    const [limH, limM] = effectiveSchedule.break_end_time.split(':').map(Number);
+    if (!isNaN(limH) && !isNaN(limM)) {
+      const limTotalMin = limH * 60 + limM;
+      const diff = endTotalMin - limTotalMin;
+      return {
+        isLate: diff > 0,
+        lateMinutes: diff > 0 ? diff : 0,
+        actualDurationMinutes: 0,
+        allowedDurationMinutes: 0
+      };
+    }
+  }
+
+  // Tipe kantor: Karyawan istirahat maksimal selama kantor_break_duration (default 60 menit)
+  const allowedDuration = Number(effectiveSchedule?.kantor_break_duration) || 60;
+
+  let actualDuration = 0;
+  if (breakStart) {
+    const [sH, sM] = breakStart.split(':').map(Number);
+    if (!isNaN(sH) && !isNaN(sM)) {
+      actualDuration = endTotalMin - (sH * 60 + sM);
+    }
+  }
+
+  const diffDuration = actualDuration > 0 ? actualDuration - allowedDuration : 0;
+
+  // Cek juga batas akhir rentang kantor (kantor_break_until, misal 15:00)
+  let diffUntil = 0;
+  if (effectiveSchedule?.kantor_break_until) {
+    let [uH, uM] = effectiveSchedule.kantor_break_until.split(':').map(Number);
+    if (uH >= 1 && uH <= 7) uH += 12;
+    const uTotalMin = uH * 60 + uM;
+    if (!isNaN(uTotalMin)) {
+      diffUntil = endTotalMin - uTotalMin;
+    }
+  }
+
+  const maxLate = Math.max(diffDuration, diffUntil);
+  return {
+    isLate: maxLate > 0,
+    lateMinutes: maxLate > 0 ? maxLate : 0,
+    actualDurationMinutes: actualDuration > 0 ? actualDuration : 0,
+    allowedDurationMinutes: allowedDuration
   };
 }
 
