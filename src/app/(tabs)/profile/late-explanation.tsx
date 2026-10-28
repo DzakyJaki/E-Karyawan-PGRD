@@ -109,7 +109,7 @@ export default function LateExplanationScreen() {
   const [previewImageTitle, setPreviewImageTitle] = useState<string>('Bukti Foto');
 
   // Helper: Format date string YYYY-MM-DD to Indonesian
-  const formatDateIndo = (dateStr?: string) => {
+  const formatDateIndo = (dateStr?: string, shortMonth: boolean = false) => {
     if (!dateStr) return '--';
     const parts = dateStr.split(' ')[0].split('-');
     if (parts.length === 3) {
@@ -118,7 +118,8 @@ export default function LateExplanationScreen() {
       const d = parseInt(parts[2], 10);
       const dateObj = new Date(y, m, d);
       const dayName = DAY_NAMES_ID[dateObj.getDay()] || '';
-      const monthName = MONTH_NAMES_ID[m] || parts[1];
+      const rawMonth = MONTH_NAMES_ID[m] || parts[1];
+      const monthName = shortMonth ? rawMonth.substring(0, 3) : rawMonth;
       return `${dayName}, ${d} ${monthName} ${y}`;
     }
     return dateStr;
@@ -880,7 +881,7 @@ export default function LateExplanationScreen() {
         setActiveTab('riwayat');
       } else {
         const errData = res.data || {};
-        let errorMsg = errData.message || 'Gagal mengirim form keterlambatan';
+        let errorMsg = errData.message || 'Gagal mengirim form pengajuan presensi';
         if (errData.errors && typeof errData.errors === 'object') {
           const detailList = Object.values(errData.errors).flat().join('\n');
           if (detailList) errorMsg = detailList;
@@ -968,7 +969,7 @@ export default function LateExplanationScreen() {
                   <MaterialIcons name="history-toggle-off" size={28} color="#ffffff" />
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.heroTitle}>Klarifikasi Keterlambatan</Text>
+                  <Text style={styles.heroTitle}>Form Pengajuan Presensi</Text>
                   <Text style={styles.heroSubtitle}>
                     Formulir administrasi penjelasan alasan telat masuk kerja, telat masuk istirahat, atau pulang cepat.
                   </Text>
@@ -1028,7 +1029,7 @@ export default function LateExplanationScreen() {
                     let isPersonalia = false;
 
                     if (isResubmit) {
-                      badgeText = 'Pengajuan Ulang (1x Ditolak)';
+                      badgeText = 'Pengajuan Ulang';
                       badgeBg = '#fef3c7';
                       badgeColor = '#b45309';
                     } else if (isExpired) {
@@ -1037,19 +1038,19 @@ export default function LateExplanationScreen() {
                       badgeColor = '#dc2626';
                       isPersonalia = true;
                     } else if (isToday) {
-                      badgeText = 'Hari Ini (Sisa 3 hari)';
+                      badgeText = 'Sisa 3 Hari';
                       badgeBg = '#dcfce7';
                       badgeColor = '#15803d';
                     } else if (diff === 1) {
-                      badgeText = 'Kemarin (Sisa 2 hari)';
+                      badgeText = 'Sisa 2 Hari';
                       badgeBg = '#dbeafe';
                       badgeColor = '#1d4ed8';
                     } else if (diff === 2) {
-                      badgeText = '2 hari lalu (Sisa 1 hari)';
+                      badgeText = 'Sisa 1 Hari';
                       badgeBg = '#fef3c7';
                       badgeColor = '#b45309';
                     } else if (diff === 3) {
-                      badgeText = '3 hari lalu (Batas Terakhir!)';
+                      badgeText = 'Batas Terakhir!';
                       badgeBg = '#ffedd5';
                       badgeColor = '#ea580c';
                     }
@@ -1074,133 +1075,133 @@ export default function LateExplanationScreen() {
                           }
                         }}
                       >
-                        <View style={styles.optionHeaderRow}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                            <View style={[
-                              styles.radioCircle,
-                              isSelected && (isExpired ? styles.radioCircleActiveExpired : styles.radioCircleActive),
-                              isExpired && !isSelected && styles.radioCircleExpired
-                            ]}>
-                              {isSelected && (
-                                <View style={[styles.radioDot, isExpired && { backgroundColor: '#dc2626' }]} />
-                              )}
-                            </View>
-                            <Text style={[
-                              styles.optionDateText,
-                              isSelected && { color: isExpired ? '#dc2626' : theme.colors.primary, fontWeight: '700' }
-                            ]}>
-                              {formatDateIndo(item.date)}
-                            </Text>
-                          </View>
-                          <View style={[styles.remainingBadge, { backgroundColor: badgeBg }]}>
-                            {isPersonalia && (
-                              <MaterialIcons name="support-agent" size={13} color={badgeColor} style={{ marginRight: 3 }} />
+                        <View style={styles.cardMainRow}>
+                          {/* Radio Button Kolom Kiri */}
+                          <View style={[
+                            styles.radioCircle,
+                            isSelected && (isExpired ? styles.radioCircleActiveExpired : styles.radioCircleActive),
+                            isExpired && !isSelected && styles.radioCircleExpired
+                          ]}>
+                            {isSelected && (
+                              <View style={[styles.radioDot, isExpired && { backgroundColor: '#dc2626' }]} />
                             )}
-                            <Text style={[styles.remainingBadgeText, { color: badgeColor, fontWeight: isPersonalia ? '700' : '600' }]}>
-                              {badgeText}
-                            </Text>
                           </View>
-                        </View>
 
-                        {/* Detail Jam & Status Terlambat */}
-                        <View style={styles.optionDetailsRow}>
-                          {/* 1. Kondisi Telat Masuk */}
-                          {isLateMasuk && (
-                            <>
-                              <View style={styles.timeTag}>
-                                <MaterialIcons name="login" size={13} color="#991b1b" />
-                                <Text style={styles.timeTagText}>
-                                  Masuk: <Text style={{ fontWeight: '700', color: '#991b1b' }}>{item.clock_in ? item.clock_in.substring(0, 5) : '--:--'}</Text>
-                                </Text>
-                              </View>
-                              <View style={[styles.lateTag, { backgroundColor: '#fee2e2' }]}>
-                                <Text style={[styles.lateTagText, { color: '#991b1b' }]}>
-                                  Telat Masuk {item.late_minutes ? `${item.late_minutes}m` : ''}
-                                </Text>
-                              </View>
-                            </>
-                          )}
-
-                          {/* 2. Kondisi Telat Masuk Istirahat */}
-                          {isLateBreak && (
-                            <>
-                              <View style={styles.timeTag}>
-                                <MaterialIcons name="restaurant" size={13} color="#9a3412" />
-                                <Text style={styles.timeTagText}>
-                                  Masuk Istirahat: <Text style={{ fontWeight: '700', color: '#9a3412' }}>{item.break_end ? item.break_end.substring(0, 5) : item.break_start ? item.break_start.substring(0, 5) : '--:--'}</Text>
-                                </Text>
-                              </View>
-                              <View style={[styles.lateTag, { backgroundColor: '#ffedd5' }]}>
-                                <Text style={[styles.lateTagText, { color: '#9a3412' }]}>
-                                  Telat Masuk Istirahat{item.break_late_minutes ? ` ${item.break_late_minutes}m` : ''}
-                                </Text>
-                              </View>
-                            </>
-                          )}
-
-                          {/* 3. Kondisi Pulang Cepat */}
-                          {isEarlyLeave && (
-                            <>
-                              <View style={styles.timeTag}>
-                                <MaterialIcons name="logout" size={13} color="#92400e" />
-                                <Text style={styles.timeTagText}>
-                                  Pulang: <Text style={{ fontWeight: '700', color: '#92400e' }}>{item.clock_out ? item.clock_out.substring(0, 5) : '--:--'}</Text>
-                                </Text>
-                              </View>
-                              <View style={[styles.lateTag, { backgroundColor: '#fef3c7' }]}>
-                                <Text style={[styles.lateTagText, { color: '#92400e' }]}>
-                                  Pulang Cepat {item.early_leave_minutes ? `${item.early_leave_minutes}m` : ''}
-                                </Text>
-                              </View>
-                            </>
-                          )}
-
-                          {/* 4. Fallback jika tidak ada flag spesifik */}
-                          {!isLateMasuk && !isLateBreak && !isEarlyLeave && item.clock_in && (
-                            <View style={styles.timeTag}>
-                              <MaterialIcons name="schedule" size={13} color={theme.colors.textMuted} />
-                              <Text style={styles.timeTagText}>
-                                Jam: <Text style={{ fontWeight: '600' }}>{item.clock_in.substring(0, 5)}</Text>
-                              </Text>
-                            </View>
-                          )}
-
-                          {/* Indikator Status Pengajuan Form Jika Ada */}
-                          {(() => {
-                            const itemExp = historyList.find(h => h.attendance_id === item.id);
-                            if (!itemExp) return null;
-                            const st = (itemExp.status || 'pending').toLowerCase();
-                            const isApp = st.includes('approv') || st.includes('setuju');
-                            const isRej = st.includes('reject') || st.includes('tolak');
-
-                            return (
-                              <View
+                          {/* Kolom Kanan Konten */}
+                          <View style={styles.cardContentCol}>
+                            {/* Baris 1: Tanggal Rapi (Bulan Ringkas) & Badge Batas/Status */}
+                            <View style={styles.optionHeaderRow}>
+                              <Text
                                 style={[
-                                  styles.lateTag,
-                                  {
-                                    backgroundColor: isApp ? '#dcfce7' : isRej ? '#fee2e2' : '#fef3c7',
-                                    flexDirection: 'row',
-                                    alignItems: 'center'
-                                  }
+                                  styles.optionDateText,
+                                  isSelected && { color: isExpired ? '#dc2626' : theme.colors.primary, fontWeight: '700' }
                                 ]}
+                                numberOfLines={1}
                               >
-                                <MaterialIcons
-                                  name={isApp ? 'check-circle' : isRej ? 'cancel' : 'hourglass-top'}
-                                  size={11}
-                                  color={isApp ? '#15803d' : isRej ? '#b91c1c' : '#b45309'}
-                                  style={{ marginRight: 3 }}
-                                />
-                                <Text
-                                  style={[
-                                    styles.lateTagText,
-                                    { color: isApp ? '#15803d' : isRej ? '#b91c1c' : '#b45309' }
-                                  ]}
-                                >
-                                  {isApp ? 'Disetujui' : isRej ? 'Ditolak' : 'Sudah Diajukan'}
+                                {formatDateIndo(item.date, true)}
+                              </Text>
+
+                              <View style={[styles.remainingBadge, { backgroundColor: badgeBg }]}>
+                                {isPersonalia && (
+                                  <MaterialIcons name="support-agent" size={12} color={badgeColor} style={{ marginRight: 3 }} />
+                                )}
+                                <Text style={[styles.remainingBadgeText, { color: badgeColor, fontWeight: isPersonalia ? '700' : '600' }]}>
+                                  {badgeText}
                                 </Text>
                               </View>
-                            );
-                          })()}
+                            </View>
+
+                            {/* Baris 2: Pill Terpadu Jam & Status Terlambat */}
+                            <View style={styles.optionDetailsRow}>
+                              {/* 1. Kondisi Telat Masuk */}
+                              {isLateMasuk && (
+                                <View style={[styles.lateDetailPill, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
+                                  <MaterialIcons name="login" size={12} color="#991b1b" style={{ marginRight: 4 }} />
+                                  <Text style={styles.lateDetailPillTime}>
+                                    Masuk: <Text style={{ fontWeight: '700', color: '#991b1b' }}>{item.clock_in ? item.clock_in.substring(0, 5) : '--:--'}</Text>
+                                  </Text>
+                                  <View style={[styles.lateDetailDivider, { backgroundColor: '#fca5a5' }]} />
+                                  <Text style={[styles.lateDetailPillBadge, { color: '#991b1b' }]}>
+                                    Telat {item.late_minutes ? `${item.late_minutes}m` : ''}
+                                  </Text>
+                                </View>
+                              )}
+
+                              {/* 2. Kondisi Telat Masuk Istirahat */}
+                              {isLateBreak && (
+                                <View style={[styles.lateDetailPill, { backgroundColor: '#fff7ed', borderColor: '#fed7aa' }]}>
+                                  <MaterialIcons name="restaurant" size={12} color="#c2410c" style={{ marginRight: 4 }} />
+                                  <Text style={[styles.lateDetailPillTime, { color: '#9a3412' }]}>
+                                    Masuk Istirahat: <Text style={{ fontWeight: '700', color: '#9a3412' }}>{item.break_end ? item.break_end.substring(0, 5) : item.break_start ? item.break_start.substring(0, 5) : '--:--'}</Text>
+                                  </Text>
+                                  <View style={[styles.lateDetailDivider, { backgroundColor: '#fdba74' }]} />
+                                  <Text style={[styles.lateDetailPillBadge, { color: '#c2410c' }]}>
+                                    Telat {item.break_late_minutes ? `${item.break_late_minutes}m` : ''}
+                                  </Text>
+                                </View>
+                              )}
+
+                              {/* 3. Kondisi Pulang Cepat */}
+                              {isEarlyLeave && (
+                                <View style={[styles.lateDetailPill, { backgroundColor: '#fffbeb', borderColor: '#fde68a' }]}>
+                                  <MaterialIcons name="logout" size={12} color="#b45309" style={{ marginRight: 4 }} />
+                                  <Text style={[styles.lateDetailPillTime, { color: '#92400e' }]}>
+                                    Pulang: <Text style={{ fontWeight: '700', color: '#92400e' }}>{item.clock_out ? item.clock_out.substring(0, 5) : '--:--'}</Text>
+                                  </Text>
+                                  <View style={[styles.lateDetailDivider, { backgroundColor: '#fcd34d' }]} />
+                                  <Text style={[styles.lateDetailPillBadge, { color: '#b45309' }]}>
+                                    Cepat {item.early_leave_minutes ? `${item.early_leave_minutes}m` : ''}
+                                  </Text>
+                                </View>
+                              )}
+
+                              {/* 4. Fallback jika tidak ada flag spesifik */}
+                              {!isLateMasuk && !isLateBreak && !isEarlyLeave && item.clock_in && (
+                                <View style={[styles.lateDetailPill, { backgroundColor: '#f1f5f9', borderColor: '#e2e8f0' }]}>
+                                  <MaterialIcons name="schedule" size={12} color="#475569" style={{ marginRight: 4 }} />
+                                  <Text style={styles.lateDetailPillTime}>
+                                    Jam: <Text style={{ fontWeight: '700' }}>{item.clock_in.substring(0, 5)}</Text>
+                                  </Text>
+                                </View>
+                              )}
+
+                              {/* Indikator Status Pengajuan Form Jika Ada */}
+                              {(() => {
+                                const itemExp = historyList.find(h => h.attendance_id === item.id);
+                                if (!itemExp) return null;
+                                const st = (itemExp.status || 'pending').toLowerCase();
+                                const isApp = st.includes('approv') || st.includes('setuju');
+                                const isRej = st.includes('reject') || st.includes('tolak');
+
+                                return (
+                                  <View
+                                    style={[
+                                      styles.lateDetailPill,
+                                      {
+                                        backgroundColor: isApp ? '#dcfce7' : isRej ? '#fee2e2' : '#fef3c7',
+                                        borderColor: isApp ? '#86efac' : isRej ? '#fca5a5' : '#fde68a'
+                                      }
+                                    ]}
+                                  >
+                                    <MaterialIcons
+                                      name={isApp ? 'check-circle' : isRej ? 'cancel' : 'hourglass-top'}
+                                      size={11}
+                                      color={isApp ? '#15803d' : isRej ? '#b91c1c' : '#b45309'}
+                                      style={{ marginRight: 3 }}
+                                    />
+                                    <Text
+                                      style={[
+                                        styles.lateDetailPillBadge,
+                                        { color: isApp ? '#15803d' : isRej ? '#b91c1c' : '#b45309' }
+                                      ]}
+                                    >
+                                      {isApp ? 'Disetujui' : isRej ? 'Ditolak' : 'Sudah Diajukan'}
+                                    </Text>
+                                  </View>
+                                );
+                              })()}
+                            </View>
+                          </View>
                         </View>
                       </TouchableOpacity>
                     );
@@ -1463,7 +1464,7 @@ export default function LateExplanationScreen() {
                     ) : (
                       <View style={styles.submitLoadingRow}>
                         <MaterialIcons name="send" size={18} color="#ffffff" style={{ marginRight: 6 }} />
-                        <Text style={styles.btnSubmitText}>Kirim Form Keterlambatan</Text>
+                        <Text style={styles.btnSubmitText}>Kirim Form Pengajuan Presensi</Text>
                       </View>
                     )}
                   </TouchableOpacity>
@@ -1987,11 +1988,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fef2f2',
     borderColor: '#ef4444'
   },
-  optionHeaderRow: {
+  cardMainRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8
+    alignItems: 'flex-start'
   },
   radioCircle: {
     width: 20,
@@ -2001,7 +2000,8 @@ const styles = StyleSheet.create({
     borderColor: '#cbd5e1',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10
+    marginRight: 10,
+    marginTop: 2
   },
   radioCircleActive: {
     borderColor: theme.colors.primary
@@ -2018,48 +2018,58 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: theme.colors.primary
   },
+  cardContentCol: {
+    flex: 1
+  },
+  optionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6
+  },
   optionDateText: {
     fontSize: 13.5,
-    fontWeight: '600',
-    color: '#334155'
+    fontWeight: '700',
+    color: '#1e293b',
+    flex: 1,
+    marginRight: 8
   },
   remainingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 20
+    borderRadius: 12
   },
   remainingBadgeText: {
-    fontSize: 11,
-    fontWeight: '600'
+    fontSize: 10.5,
+    fontWeight: '700'
   },
   optionDetailsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 8,
-    marginLeft: 30
+    marginTop: 2
   },
-  timeTag: {
+  lateDetailPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e2e8f0'
-  },
-  timeTagText: {
-    fontSize: 11.5,
-    color: '#475569',
-    marginLeft: 4
-  },
-  lateTag: {
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6
+    paddingVertical: 3.5
   },
-  lateTagText: {
+  lateDetailPillTime: {
+    fontSize: 11.5,
+    color: '#334155'
+  },
+  lateDetailDivider: {
+    width: 1,
+    height: 11,
+    marginHorizontal: 6
+  },
+  lateDetailPillBadge: {
     fontSize: 11,
     fontWeight: '700'
   },

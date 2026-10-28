@@ -29,7 +29,7 @@ export default function ProfileLayout() {
       <Stack.Screen
         name="late-explanation"
         options={{
-          title: 'Form Keterlambatan',
+          title: 'Form Pengajuan Presensi',
         }}
       />
       <Stack.Screen

@@ -43,6 +43,15 @@ const TUTORIAL_TOPICS: TutorialTopic[] = [
     routeLabel: 'Buka Halaman Presensi',
     guideText: `📍 PANDUAN PRESENSI GPS:\n\n1️⃣ Aktifkan GPS pada smartphone Anda dan izinkan akses lokasi.\n2️⃣ Masuk ke menu "Presensi" dari tombol tengah navigasi.\n3️⃣ Aplikasi akan memeriksa koordinat posisi Anda terhadap radius kantor cabang.\n4️⃣ Tekan "Clock In (Masuk)" saat mulai bertugas, atau "Clock Out (Pulang)" saat selesai jam kerja.\n5️⃣ Data jam masuk, jam pulang, dan status keterlambatan tersinkronisasi otomatis ke sistem HRD.`
   },
+  {
+    id: 'pengajuan_presensi',
+    icon: 'history-toggle-off',
+    title: 'Form Pengajuan Presensi',
+    shortDesc: 'Klarifikasi telat masuk, masuk istirahat & pulang cepat',
+    route: '/(tabs)/profile/late-explanation',
+    routeLabel: 'Buka Form Pengajuan Presensi',
+    guideText: `📝 PANDUAN FORM PENGAJUAN PRESENSI:\n\n1️⃣ Masuk ke menu "Profil" lalu pilih "Form Pengajuan Presensi".\n2️⃣ Pilih tanggal presensi yang mengalami kendala keterlambatan atau pulang cepat.\n3️⃣ Ketentuan Batas Waktu Pengajuan:\n   • Pengajuan mandiri hanya berlaku maksimal 3 hari setelah tanggal presensi.\n   • Jika keterlambatan > 3 hari, sistem otomatis menyarankan untuk langsung menghubungi bagian Personalia/HRD.\n4️⃣ Jenis keterlambatan otomatis terdeteksi (Masuk, Masuk Istirahat, atau Pulang Cepat).\n5️⃣ Masukkan alasan secara jujur & jelas serta lampirkan foto bukti jika diperlukan.\n6️⃣ Tekan "Kirim Form Pengajuan Presensi".\n7️⃣ Pantau status persetujuan pada tab "Riwayat Pengajuan":\n   • Disetujui: Telat masuk disetujui personelia (tidak dipotong gaji).\n   • Ditolak: Tersedia 1x kesempatan perbaikan (pengajuan ulang ke-2) dengan melihat catatan penolakan dari personelia.`
+  },
   /* Lembur disembunyikan sementara sesuai instruksi owner, kodingan tetap disimpan:
   {
     id: 'lembur',
