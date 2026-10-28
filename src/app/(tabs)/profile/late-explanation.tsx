@@ -32,6 +32,8 @@ interface AttendanceRecord {
   is_late?: boolean | null;
   late_minutes?: number | null;
   late_status?: string | null;
+  is_break_late?: boolean | null;
+  break_late_minutes?: number | null;
   break_late_status?: string | null;
   is_early_leave?: boolean | null;
   early_leave_minutes?: number | null;
@@ -154,11 +156,13 @@ export default function LateExplanationScreen() {
     );
 
     const isLateBreak = Boolean(
-      item.break_late_status &&
-      !item.break_late_status.toLowerCase().includes('tepat') &&
-      (item.break_late_status.toLowerCase().includes('telat') ||
-       item.break_late_status.toLowerCase().includes('lambat') ||
-       item.break_late_status.toLowerCase().includes('menit'))
+      item.is_break_late === true ||
+      (typeof item.break_late_minutes === 'number' && item.break_late_minutes > 0) ||
+      (item.break_late_status &&
+        !item.break_late_status.toLowerCase().includes('tepat') &&
+        (item.break_late_status.toLowerCase().includes('telat') ||
+         item.break_late_status.toLowerCase().includes('lambat') ||
+         item.break_late_status.toLowerCase().includes('menit')))
     );
 
     const isEarlyLeave = Boolean(
@@ -905,7 +909,7 @@ export default function LateExplanationScreen() {
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={styles.heroTitle}>Klarifikasi Keterlambatan</Text>
                   <Text style={styles.heroSubtitle}>
-                    Formulir administrasi penjelasan alasan keterlambatan jam masuk kerja atau kembali dari istirahat.
+                    Formulir administrasi penjelasan alasan telat masuk kerja, telat masuk istirahat, atau pulang cepat.
                   </Text>
                 </View>
               </View>
@@ -1039,51 +1043,63 @@ export default function LateExplanationScreen() {
 
                         {/* Detail Jam & Status Terlambat */}
                         <View style={styles.optionDetailsRow}>
-                          <View style={styles.timeTag}>
-                            <MaterialIcons name="login" size={13} color={theme.colors.textMuted} />
-                            <Text style={styles.timeTagText}>
-                              Masuk: <Text style={{ fontWeight: '600' }}>{item.clock_in ? item.clock_in.substring(0, 5) : '--:--'}</Text>
-                            </Text>
-                          </View>
-
-                          {item.clock_out && (
-                            <View style={styles.timeTag}>
-                              <MaterialIcons name="logout" size={13} color={theme.colors.textMuted} />
-                              <Text style={styles.timeTagText}>
-                                Pulang: <Text style={{ fontWeight: '600' }}>{item.clock_out.substring(0, 5)}</Text>
-                              </Text>
-                            </View>
-                          )}
-
-                          {item.break_end && (
-                            <View style={styles.timeTag}>
-                              <MaterialIcons name="restaurant" size={13} color={theme.colors.textMuted} />
-                              <Text style={styles.timeTagText}>
-                                Istirahat: <Text style={{ fontWeight: '600' }}>{item.break_end.substring(0, 5)}</Text>
-                              </Text>
-                            </View>
-                          )}
-
+                          {/* 1. Kondisi Telat Masuk */}
                           {isLateMasuk && (
-                            <View style={[styles.lateTag, { backgroundColor: '#fee2e2' }]}>
-                              <Text style={[styles.lateTagText, { color: '#991b1b' }]}>
-                                Telat Masuk {item.late_minutes ? `${item.late_minutes}m` : ''}
-                              </Text>
-                            </View>
+                            <>
+                              <View style={styles.timeTag}>
+                                <MaterialIcons name="login" size={13} color="#991b1b" />
+                                <Text style={styles.timeTagText}>
+                                  Masuk: <Text style={{ fontWeight: '700', color: '#991b1b' }}>{item.clock_in ? item.clock_in.substring(0, 5) : '--:--'}</Text>
+                                </Text>
+                              </View>
+                              <View style={[styles.lateTag, { backgroundColor: '#fee2e2' }]}>
+                                <Text style={[styles.lateTagText, { color: '#991b1b' }]}>
+                                  Telat Masuk {item.late_minutes ? `${item.late_minutes}m` : ''}
+                                </Text>
+                              </View>
+                            </>
                           )}
 
+                          {/* 2. Kondisi Telat Masuk Istirahat */}
                           {isLateBreak && (
-                            <View style={[styles.lateTag, { backgroundColor: '#ffedd5' }]}>
-                              <Text style={[styles.lateTagText, { color: '#9a3412' }]}>
-                                Telat Istirahat
-                              </Text>
-                            </View>
+                            <>
+                              <View style={styles.timeTag}>
+                                <MaterialIcons name="restaurant" size={13} color="#9a3412" />
+                                <Text style={styles.timeTagText}>
+                                  Masuk Istirahat: <Text style={{ fontWeight: '700', color: '#9a3412' }}>{item.break_end ? item.break_end.substring(0, 5) : item.break_start ? item.break_start.substring(0, 5) : '--:--'}</Text>
+                                </Text>
+                              </View>
+                              <View style={[styles.lateTag, { backgroundColor: '#ffedd5' }]}>
+                                <Text style={[styles.lateTagText, { color: '#9a3412' }]}>
+                                  Telat Masuk Istirahat{item.break_late_minutes ? ` ${item.break_late_minutes}m` : ''}
+                                </Text>
+                              </View>
+                            </>
                           )}
 
+                          {/* 3. Kondisi Pulang Cepat */}
                           {isEarlyLeave && (
-                            <View style={[styles.lateTag, { backgroundColor: '#fef3c7' }]}>
-                              <Text style={[styles.lateTagText, { color: '#92400e' }]}>
-                                Pulang Cepat {item.early_leave_minutes ? `${item.early_leave_minutes}m` : ''}
+                            <>
+                              <View style={styles.timeTag}>
+                                <MaterialIcons name="logout" size={13} color="#92400e" />
+                                <Text style={styles.timeTagText}>
+                                  Pulang: <Text style={{ fontWeight: '700', color: '#92400e' }}>{item.clock_out ? item.clock_out.substring(0, 5) : '--:--'}</Text>
+                                </Text>
+                              </View>
+                              <View style={[styles.lateTag, { backgroundColor: '#fef3c7' }]}>
+                                <Text style={[styles.lateTagText, { color: '#92400e' }]}>
+                                  Pulang Cepat {item.early_leave_minutes ? `${item.early_leave_minutes}m` : ''}
+                                </Text>
+                              </View>
+                            </>
+                          )}
+
+                          {/* 4. Fallback jika tidak ada flag spesifik */}
+                          {!isLateMasuk && !isLateBreak && !isEarlyLeave && item.clock_in && (
+                            <View style={styles.timeTag}>
+                              <MaterialIcons name="schedule" size={13} color={theme.colors.textMuted} />
+                              <Text style={styles.timeTagText}>
+                                Jam: <Text style={{ fontWeight: '600' }}>{item.clock_in.substring(0, 5)}</Text>
                               </Text>
                             </View>
                           )}
@@ -1248,9 +1264,9 @@ export default function LateExplanationScreen() {
                       color={lateType === 'istirahat' ? '#ea580c' : theme.colors.textMuted}
                     />
                     <Text style={[styles.lateTypeBtnTitle, lateType === 'istirahat' && styles.lateTypeBtnTitleActive]}>
-                      Istirahat
+                      Masuk Istirahat
                     </Text>
-                    <Text style={styles.lateTypeBtnSubtitle}>Telat Istirahat</Text>
+                    <Text style={styles.lateTypeBtnSubtitle}>Telat Masuk Istirahat</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -1473,7 +1489,7 @@ export default function LateExplanationScreen() {
                             typeBg = '#fef3c7';
                             typeColor = '#92400e';
                           } else if (item.late_type === 'istirahat') {
-                            typeLabel = 'Terlambat Istirahat';
+                            typeLabel = 'Telat Masuk Istirahat';
                             typeIcon = 'restaurant';
                             typeBg = '#ffedd5';
                             typeColor = '#9a3412';
