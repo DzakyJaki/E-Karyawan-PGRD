@@ -53,6 +53,7 @@ export interface LateExplanationItem {
   bukti_file?: string | null;
   status?: 'pending' | 'approved' | 'rejected' | 'menunggu' | 'disetujui' | 'ditolak' | string;
   catatan?: string | null;
+  catatan_penolakan?: string | null;
   admin_note?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -317,6 +318,20 @@ export default function LateExplanationScreen() {
   }, [getDaysDiff, selectedAttendanceId, checkIsAttendanceLate]);
 
   // Fetch Full History of Late Explanations
+  // Helper: Ambil URL lengkap untuk berkas lampiran
+  const getAttachmentFullUrl = (rawUrl?: string | null): string => {
+    if (!rawUrl) return '';
+    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://') || rawUrl.startsWith('file://')) {
+      return rawUrl;
+    }
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://dieselmart.pagaruyungdiesel.cloud';
+    const cleanBase = apiUrl.replace(/\/+$/, '');
+    const cleanPath = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
+    const hasStorage = cleanPath.startsWith('/storage/');
+    return `${cleanBase}${hasStorage ? cleanPath : `/storage${cleanPath}`}`;
+  };
+
+  // Fetch Full History of Late Explanations dari backend (GET /api/my/presensi/{attendanceId}/late-explanation)
   const fetchAllExplanationsHistory = useCallback(async (currentAttendances: AttendanceRecord[]) => {
     setLoadingHistory(true);
     try {
@@ -330,74 +345,112 @@ export default function LateExplanationScreen() {
       // 1. Ambil data lokal terlebih dahulu
       const localItems = await loadLocalHistory();
 
-      // 2. Coba fetch list dari backend jika tersedia (mis. GET /api/my/presensi/late-explanation)
-      let backendList: LateExplanationItem[] = [];
-      try {
-        let res = await fetch(`${apiUrl}/api/my/presensi/late-explanation`, { headers });
-        if (res.status === 404) {
-          res = await fetch(`${apiUrl}/api/presensi/late-explanation`, { headers });
+      // 2. Kumpulkan attendance_id yang perlu dicek ke backend:
+      // - Seluruh presensi yang memiliki keterlambatan / pulang cepat
+      // - Seluruh attendance_id yang pernah tersimpan di local history
+      const attIdsToQuery = new Set<number>();
+      currentAttendances.forEach(att => {
+        if (att.id && checkIsAttendanceLate(att).isLate) {
+          attIdsToQuery.add(att.id);
         }
-        if (res.ok) {
-          const json = await res.json();
-          if (Array.isArray(json.data)) {
-            backendList = json.data;
-          } else if (Array.isArray(json)) {
-            backendList = json;
-          }
-        }
-      } catch {}
+      });
+      localItems.forEach(item => {
+        if (item.attendance_id) attIdsToQuery.add(item.attendance_id);
+      });
 
-      // 3. Untuk setiap item lokal yang berstatus pending/menunggu, refresh status dari GET /presensi/{attendanceId}/late-explanation
-      const itemsToCheck = backendList.length > 0 ? backendList : localItems;
-      const refreshedItems: LateExplanationItem[] = await Promise.all(
-        itemsToCheck.map(async item => {
+      // 3. Panggil GET /api/my/presensi/{attendanceId}/late-explanation
+      const fetchedExplanations: LateExplanationItem[] = [];
+
+      await Promise.all(
+        Array.from(attIdsToQuery).map(async attId => {
           try {
-            let res = await fetch(`${apiUrl}/api/my/presensi/${item.attendance_id}/late-explanation`, { headers });
+            let res = await fetch(`${apiUrl}/api/my/presensi/${attId}/late-explanation`, { headers });
             if (res.status === 404) {
-              res = await fetch(`${apiUrl}/api/presensi/${item.attendance_id}/late-explanation`, { headers });
+              res = await fetch(`${apiUrl}/api/presensi/${attId}/late-explanation`, { headers });
             }
             if (res.ok) {
               const json = await res.json();
-              const d = json.data || json;
-              if (d && (d.attendance_id || d.id)) {
-                return {
-                  ...item,
-                  ...d,
-                  attendance_id: item.attendance_id
-                };
+              const att = currentAttendances.find(a => a.id === attId) || json.attendance;
+
+              // Format Backend: { attendance: {...}, explanations: [...] }
+              if (json && Array.isArray(json.explanations)) {
+                json.explanations.forEach((exp: any) => {
+                  fetchedExplanations.push({
+                    id: exp.id,
+                    attendance_id: exp.attendance_id || attId,
+                    attendance_date: att?.date || json.attendance?.date,
+                    clock_in: att?.clock_in || json.attendance?.clock_in,
+                    clock_out: att?.clock_out || json.attendance?.clock_out,
+                    late_type: (exp.late_type as LateType) || 'masuk',
+                    alasan: exp.alasan || '',
+                    bukti_file: exp.bukti_file || null,
+                    status: exp.status || 'pending',
+                    catatan_penolakan: exp.catatan_penolakan || null,
+                    catatan: exp.catatan_penolakan || exp.catatan || exp.admin_note || null,
+                    admin_note: exp.catatan_penolakan || exp.admin_note || null,
+                    created_at: exp.created_at || null,
+                    updated_at: exp.updated_at || null
+                  });
+                });
+              } else if (json && (json.attendance_id || json.id)) {
+                // Format alternatif jika single record
+                const d = json.data || json;
+                fetchedExplanations.push({
+                  id: d.id,
+                  attendance_id: d.attendance_id || attId,
+                  attendance_date: att?.date || d.attendance_date,
+                  clock_in: att?.clock_in || d.clock_in,
+                  clock_out: att?.clock_out || d.clock_out,
+                  late_type: (d.late_type as LateType) || 'masuk',
+                  alasan: d.alasan || '',
+                  bukti_file: d.bukti_file || null,
+                  status: d.status || 'pending',
+                  catatan_penolakan: d.catatan_penolakan || null,
+                  catatan: d.catatan_penolakan || d.catatan || d.admin_note || null,
+                  admin_note: d.catatan_penolakan || d.admin_note || null,
+                  created_at: d.created_at || null,
+                  updated_at: d.updated_at || null
+                });
               }
             }
-          } catch {}
-          return item;
+          } catch (err) {
+            console.log(`Error checking explanation for attendance ${attId}:`, err);
+          }
         })
       );
 
-      // 4. Perkaya dengan informasi tanggal & jam dari attendances list
-      const enrichedList = refreshedItems.map(item => {
-        const att = currentAttendances.find(a => a.id === item.attendance_id);
-        return {
-          ...item,
-          attendance_date: item.attendance_date || att?.date,
-          clock_in: item.clock_in || att?.clock_in,
-          clock_out: item.clock_out || att?.clock_out
-        };
+      // 4. Gabungkan fetchedExplanations dengan localItems
+      const mergedMap = new Map<string, LateExplanationItem>();
+
+      // Masukkan localItems terlebih dahulu
+      localItems.forEach(item => {
+        const key = item.id ? `id_${item.id}` : `att_${item.attendance_id}_${item.late_type}`;
+        mergedMap.set(key, item);
       });
 
+      // Timpa / tambahkan dengan data segar dari server
+      fetchedExplanations.forEach(item => {
+        const key = item.id ? `id_${item.id}` : `att_${item.attendance_id}_${item.late_type}`;
+        mergedMap.set(key, item);
+      });
+
+      const finalHistory = Array.from(mergedMap.values());
+
       // Urutkan riwayat dari yang terbaru
-      enrichedList.sort((a, b) => {
+      finalHistory.sort((a, b) => {
         const dateA = a.created_at || a.attendance_date || '';
         const dateB = b.created_at || b.attendance_date || '';
         return dateB.localeCompare(dateA);
       });
 
-      setHistoryList(enrichedList);
-      await AsyncStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(enrichedList));
+      setHistoryList(finalHistory);
+      await AsyncStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(finalHistory));
     } catch (err) {
       console.log('Error fetching explanation history:', err);
     } finally {
       setLoadingHistory(false);
     }
-  }, []);
+  }, [checkIsAttendanceLate]);
 
   // Initial Load
   useEffect(() => {
@@ -409,12 +462,12 @@ export default function LateExplanationScreen() {
     init();
   }, [fetchAttendances]);
 
-  // When attendances loaded or tab changed to 'riwayat', refresh history
+  // Refresh history whenever attendances data is loaded or refreshed
   useEffect(() => {
-    if (activeTab === 'riwayat' && attendances.length > 0) {
+    if (attendances.length > 0) {
       fetchAllExplanationsHistory(attendances);
     }
-  }, [activeTab, attendances, fetchAllExplanationsHistory]);
+  }, [attendances, fetchAllExplanationsHistory]);
 
   // Pastikan selectedAttendanceId selalu memilih presensi terlambat yang ada dalam daftar
   useEffect(() => {
@@ -453,6 +506,16 @@ export default function LateExplanationScreen() {
     return getDaysDiff(selectedAttendance.date) > 3;
   }, [selectedAttendance, getDaysDiff]);
 
+  // Cek apakah presensi yang dipilih sudah pernah diajukan formulirnya
+  const selectedExistingExplanation = useMemo(() => {
+    if (!selectedAttendance) return null;
+    return (
+      historyList.find(h => h.attendance_id === selectedAttendance.id && h.late_type === lateType) ||
+      historyList.find(h => h.attendance_id === selectedAttendance.id) ||
+      null
+    );
+  }, [selectedAttendance, historyList, lateType]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchAttendances();
@@ -466,14 +529,7 @@ export default function LateExplanationScreen() {
   const openAttachmentFile = async (rawUrl?: string | null) => {
     if (!rawUrl) return;
     try {
-      let fullUrl = rawUrl;
-      if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
-        const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://dieselmart.pagaruyungdiesel.cloud';
-        const cleanBase = apiUrl.replace(/\/+$/, '');
-        const cleanPath = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
-        const hasStorage = cleanPath.startsWith('/storage/');
-        fullUrl = `${cleanBase}${hasStorage ? cleanPath : `/storage${cleanPath}`}`;
-      }
+      const fullUrl = getAttachmentFullUrl(rawUrl);
 
       const isPdf = fullUrl.toLowerCase().includes('.pdf');
       if (isPdf) {
@@ -988,6 +1044,43 @@ export default function LateExplanationScreen() {
                               </Text>
                             </View>
                           )}
+
+                          {/* Indikator Status Pengajuan Form Jika Ada */}
+                          {(() => {
+                            const itemExp = historyList.find(h => h.attendance_id === item.id);
+                            if (!itemExp) return null;
+                            const st = (itemExp.status || 'pending').toLowerCase();
+                            const isApp = st.includes('approv') || st.includes('setuju');
+                            const isRej = st.includes('reject') || st.includes('tolak');
+
+                            return (
+                              <View
+                                style={[
+                                  styles.lateTag,
+                                  {
+                                    backgroundColor: isApp ? '#dcfce7' : isRej ? '#fee2e2' : '#fef3c7',
+                                    flexDirection: 'row',
+                                    alignItems: 'center'
+                                  }
+                                ]}
+                              >
+                                <MaterialIcons
+                                  name={isApp ? 'check-circle' : isRej ? 'cancel' : 'hourglass-top'}
+                                  size={11}
+                                  color={isApp ? '#15803d' : isRej ? '#b91c1c' : '#b45309'}
+                                  style={{ marginRight: 3 }}
+                                />
+                                <Text
+                                  style={[
+                                    styles.lateTagText,
+                                    { color: isApp ? '#15803d' : isRej ? '#b91c1c' : '#b45309' }
+                                  ]}
+                                >
+                                  {isApp ? 'Disetujui' : isRej ? 'Ditolak' : 'Sudah Diajukan'}
+                                </Text>
+                              </View>
+                            );
+                          })()}
                         </View>
                       </TouchableOpacity>
                     );
@@ -1038,6 +1131,82 @@ export default function LateExplanationScreen() {
                   <MaterialIcons name="edit-note" size={22} color={theme.colors.primary} />
                   <Text style={styles.sectionTitle}>Detail Alasan & Berkas</Text>
                 </View>
+
+                {/* NOTIFIKASI JIKA SUDAH PERNAH DIAJUKAN */}
+                {selectedExistingExplanation && (
+                  <View
+                    style={[
+                      styles.alreadySubmittedBanner,
+                      selectedExistingExplanation.status?.toLowerCase().includes('approv') ||
+                      selectedExistingExplanation.status?.toLowerCase().includes('setuju')
+                        ? { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }
+                        : selectedExistingExplanation.status?.toLowerCase().includes('reject') ||
+                          selectedExistingExplanation.status?.toLowerCase().includes('tolak')
+                        ? { backgroundColor: '#fef2f2', borderColor: '#fecaca' }
+                        : { backgroundColor: '#fffbeb', borderColor: '#fde68a' }
+                    ]}
+                  >
+                    <MaterialIcons
+                      name={
+                        selectedExistingExplanation.status?.toLowerCase().includes('approv') ||
+                        selectedExistingExplanation.status?.toLowerCase().includes('setuju')
+                          ? 'check-circle'
+                          : selectedExistingExplanation.status?.toLowerCase().includes('reject') ||
+                            selectedExistingExplanation.status?.toLowerCase().includes('tolak')
+                          ? 'cancel'
+                          : 'hourglass-top'
+                      }
+                      size={20}
+                      color={
+                        selectedExistingExplanation.status?.toLowerCase().includes('approv') ||
+                        selectedExistingExplanation.status?.toLowerCase().includes('setuju')
+                          ? '#16a34a'
+                          : selectedExistingExplanation.status?.toLowerCase().includes('reject') ||
+                            selectedExistingExplanation.status?.toLowerCase().includes('tolak')
+                          ? '#dc2626'
+                          : '#d97706'
+                      }
+                      style={{ marginRight: 8, marginTop: 2 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.alreadySubmittedTitle,
+                          {
+                            color:
+                              selectedExistingExplanation.status?.toLowerCase().includes('approv') ||
+                              selectedExistingExplanation.status?.toLowerCase().includes('setuju')
+                                ? '#15803d'
+                                : selectedExistingExplanation.status?.toLowerCase().includes('reject') ||
+                                  selectedExistingExplanation.status?.toLowerCase().includes('tolak')
+                                ? '#991b1b'
+                                : '#b45309'
+                          }
+                        ]}
+                      >
+                        Klarifikasi Sudah Pernah Diajukan (
+                        {selectedExistingExplanation.status?.toLowerCase().includes('approv') ||
+                        selectedExistingExplanation.status?.toLowerCase().includes('setuju')
+                          ? 'Disetujui HRD'
+                          : selectedExistingExplanation.status?.toLowerCase().includes('reject') ||
+                            selectedExistingExplanation.status?.toLowerCase().includes('tolak')
+                          ? 'Ditolak HRD'
+                          : 'Menunggu Persetujuan HRD'}
+                        )
+                      </Text>
+                      <Text style={styles.alreadySubmittedDesc} numberOfLines={2}>
+                        "{selectedExistingExplanation.alasan}"
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.btnViewInHistory}
+                        onPress={() => setActiveTab('riwayat')}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.btnViewInHistoryText}>Lihat Detail di Tab Riwayat →</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
 
                 {/* 1. PILIHAN JENIS KETERLAMBATAN (OTOMATIS BERDASARKAN PRESENSI) */}
                 <View style={styles.lateTypeHeaderRow}>
@@ -1333,16 +1502,15 @@ export default function LateExplanationScreen() {
                       {/* Lampiran Foto Bukti */}
                       {item.bukti_file && (
                         <View style={styles.historyFileRow}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                            <MaterialIcons
-                              name="image"
-                              size={18}
-                              color={theme.colors.primary}
-                              style={{ marginRight: 6 }}
-                            />
+                          <Image
+                            source={{ uri: getAttachmentFullUrl(item.bukti_file) }}
+                            style={styles.historyThumbnail}
+                          />
+                          <View style={{ flex: 1, marginLeft: 10 }}>
                             <Text style={styles.historyFileName} numberOfLines={1}>
                               Foto Bukti Keterlambatan
                             </Text>
+                            <Text style={styles.historyFileSub}>Ketuk untuk melihat foto</Text>
                           </View>
                           <TouchableOpacity
                             style={styles.btnViewFile}
@@ -1355,11 +1523,32 @@ export default function LateExplanationScreen() {
                       )}
 
                       {/* Tanggapan / Catatan HRD */}
-                      {(item.catatan || item.admin_note) && (
-                        <View style={styles.historyAdminNoteBox}>
-                          <Text style={styles.historyAdminNoteTitle}>Tanggapan HRD:</Text>
-                          <Text style={styles.historyAdminNoteText}>
-                            {item.catatan || item.admin_note}
+                      {(item.catatan || item.admin_note || item.catatan_penolakan) && (
+                        <View
+                          style={[
+                            styles.historyAdminNoteBox,
+                            s.includes('reject') || s.includes('tolak')
+                              ? { backgroundColor: '#fee2e2', borderColor: '#fca5a5' }
+                              : null
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.historyAdminNoteTitle,
+                              s.includes('reject') || s.includes('tolak') ? { color: '#991b1b' } : null
+                            ]}
+                          >
+                            {s.includes('reject') || s.includes('tolak')
+                              ? 'Catatan Penolakan HRD:'
+                              : 'Tanggapan HRD:'}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.historyAdminNoteText,
+                              s.includes('reject') || s.includes('tolak') ? { color: '#7f1d1d' } : null
+                            ]}
+                          >
+                            {item.catatan_penolakan || item.catatan || item.admin_note}
                           </Text>
                         </View>
                       )}
@@ -2100,5 +2289,44 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#78350f',
     lineHeight: 16
+  },
+  historyThumbnail: {
+    width: 38,
+    height: 38,
+    borderRadius: 6,
+    backgroundColor: '#cbd5e1'
+  },
+  historyFileSub: {
+    fontSize: 10.5,
+    color: '#64748b'
+  },
+  alreadySubmittedBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 16
+  },
+  alreadySubmittedTitle: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    marginBottom: 2
+  },
+  alreadySubmittedDesc: {
+    fontSize: 11.5,
+    color: '#475569',
+    lineHeight: 16,
+    fontStyle: 'italic',
+    marginBottom: 6
+  },
+  btnViewInHistory: {
+    alignSelf: 'flex-start',
+    paddingVertical: 2
+  },
+  btnViewInHistoryText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: theme.colors.primary
   }
 });
