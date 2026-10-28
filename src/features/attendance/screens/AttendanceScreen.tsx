@@ -957,7 +957,7 @@ export function AttendanceScreen() {
     return {
       type: 'Check Out' as const,
       title: 'Presensi Hari Ini Selesai',
-      sub: 'Jaga kesehatan untuk aktivitas besok',
+      sub: 'Selamat beristirahat dan sampai jumpa besok!',
       icon: 'check-circle' as keyof typeof MaterialIcons.glyphMap,
       btnColor: '#059669',
       disabled: true,
