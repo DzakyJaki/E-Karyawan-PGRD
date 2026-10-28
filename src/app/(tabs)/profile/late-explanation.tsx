@@ -483,6 +483,7 @@ export default function LateExplanationScreen() {
 
       // 3. Panggil GET /api/my/presensi/{attendanceId}/late-explanation
       const fetchedExplanations: LateExplanationItem[] = [];
+      const successfullyFetchedAttIds = new Set<number>();
 
       await Promise.all(
         Array.from(attIdsToQuery).map(async attId => {
@@ -492,6 +493,7 @@ export default function LateExplanationScreen() {
               res = await fetch(`${apiUrl}/api/presensi/${attId}/late-explanation`, { headers });
             }
             if (res.ok) {
+              successfullyFetchedAttIds.add(attId);
               const json = await res.json();
               const att = currentAttendances.find(a => a.id === attId) || json.attendance;
 
@@ -542,22 +544,28 @@ export default function LateExplanationScreen() {
         })
       );
 
-      // 4. Gabungkan fetchedExplanations dengan localItems
-      const mergedMap = new Map<string, LateExplanationItem>();
+      // 4. Gabungkan data server dengan localItems:
+      // Server adalah sumber utama (Single Source of Truth).
+      // Item lokal lama untuk attendance_id yang berhasil di-fetch dari server DIBUANG agar tidak terjadi duplikasi.
+      const finalItemsMap = new Map<string, LateExplanationItem>();
 
-      // Masukkan localItems terlebih dahulu
-      localItems.forEach(item => {
-        const key = item.id ? `id_${item.id}` : `att_${item.attendance_id}_${item.late_type}`;
-        mergedMap.set(key, item);
-      });
-
-      // Timpa / tambahkan dengan data segar dari server
+      // Masukkan item dari server (prioritas utama)
       fetchedExplanations.forEach(item => {
-        const key = item.id ? `id_${item.id}` : `att_${item.attendance_id}_${item.late_type}`;
-        mergedMap.set(key, item);
+        const key = item.id ? `id_${item.id}` : `att_${item.attendance_id}_${item.late_type}_${item.created_at || ''}`;
+        finalItemsMap.set(key, item);
       });
 
-      const finalHistory = Array.from(mergedMap.values());
+      // Masukkan item lokal HANYA jika attendance_id tersebut BELUM berhasil diambil dari server (misal offline)
+      localItems.forEach(item => {
+        if (!successfullyFetchedAttIds.has(item.attendance_id)) {
+          const key = item.id ? `id_${item.id}` : `att_${item.attendance_id}_${item.late_type}_${item.created_at || ''}`;
+          if (!finalItemsMap.has(key)) {
+            finalItemsMap.set(key, item);
+          }
+        }
+      });
+
+      const finalHistory = Array.from(finalItemsMap.values());
 
       // Urutkan riwayat dari yang terbaru
       finalHistory.sort((a, b) => {
@@ -841,7 +849,10 @@ export default function LateExplanationScreen() {
 
         // Temukan record presensi untuk menyimpan data tanggal
         const selectedAtt = attendances.find(a => a.id === selectedAttendanceId);
+        const expId = res.data?.id || res.data?.explanation?.id || res.data?.data?.id;
+
         const savedItem: LateExplanationItem = {
+          id: expId || undefined,
           attendance_id: selectedAttendanceId!,
           attendance_date: selectedAtt?.date,
           clock_in: selectedAtt?.clock_in,
@@ -861,6 +872,9 @@ export default function LateExplanationScreen() {
         setAttachmentName(null);
         setAttachmentMime(null);
         setAttachmentSize(null);
+
+        // Segera sinkronkan ulang seluruh riwayat dari backend
+        fetchAllExplanationsHistory(attendances);
 
         // Beralih ke Tab Riwayat untuk melihat hasil pengajuan
         setActiveTab('riwayat');
