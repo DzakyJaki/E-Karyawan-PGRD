@@ -65,6 +65,7 @@ export interface LateExplanationItem {
 }
 
 export interface LateExplanationDraft {
+  id?: number;
   attendance_id: number;
   attendance_date?: string;
   clock_in?: string | null;
@@ -441,14 +442,62 @@ export default function LateExplanationScreen() {
     }
   };
 
+  // Helper: Hapus draft dari server backend (DELETE /api/my/presensi/late-explanation/{draftId})
+  const deleteDraftFromServer = async (draftId: number): Promise<{ ok: boolean; message?: string }> => {
+    try {
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://dieselmart.pagaruyungdiesel.cloud';
+      const token = await AsyncStorage.getItem('userToken');
+
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json'
+      };
+
+      // Coba endpoint /api/my/presensi/late-explanation/{draftId}
+      let res = await fetch(`${apiUrl}/api/my/presensi/late-explanation/${draftId}`, {
+        method: 'DELETE',
+        headers
+      });
+
+      // Fallback tanpa /my jika 404
+      if (res.status === 404) {
+        res = await fetch(`${apiUrl}/api/presensi/late-explanation/${draftId}`, {
+          method: 'DELETE',
+          headers
+        });
+      }
+
+      const json = await res.json().catch(() => ({}));
+      return {
+        ok: res.ok,
+        message: json.message || (res.ok ? 'Draft berhasil dihapus dari server.' : 'Gagal menghapus draft.')
+      };
+    } catch (err: any) {
+      return { ok: false, message: err?.message || 'Gagal menghubungi server' };
+    }
+  };
+
   // Helper: Remove draft for an attendance
   const removeDraft = async (attendanceId: number, silent = false) => {
     const doDelete = async () => {
       try {
+        // Cek apakah draft ini memiliki ID di server
+        const existingServerDraft = historyList.find(
+          h => h.attendance_id === attendanceId && (h.status || '').toLowerCase().includes('draft')
+        );
+        const draftId = existingServerDraft?.id || drafts[attendanceId]?.id;
+
+        if (draftId) {
+          await deleteDraftFromServer(draftId);
+        }
+
         const next = { ...drafts };
         delete next[attendanceId];
         await AsyncStorage.setItem(STORAGE_KEY_DRAFTS, JSON.stringify(next));
         setDrafts(next);
+
+        // Hapus juga record draft dari historyList agar tampilan riwayat langsung bersih
+        setHistoryList(prev => prev.filter(h => !(h.attendance_id === attendanceId && (h.status || '').toLowerCase().includes('draft'))));
 
         if (selectedAttendanceId === attendanceId) {
           setAlasan('');
@@ -461,10 +510,13 @@ export default function LateExplanationScreen() {
         if (!silent) {
           showToast({
             title: 'Draft Dihapus',
-            message: 'Draft pengajuan berhasil dihapus.',
+            message: 'Draft pengajuan berhasil dihapus dari server dan perangkat.',
             type: 'info'
           });
         }
+
+        // Sinkronkan ulang riwayat presensi
+        fetchAllExplanationsHistory(attendances);
       } catch {}
     };
 
@@ -473,7 +525,7 @@ export default function LateExplanationScreen() {
     } else {
       showConfirm({
         title: 'Hapus Draft Pengajuan?',
-        message: 'Draft pengajuan untuk tanggal ini akan dihapus dari penyimpanan perangkat Anda.',
+        message: 'Draft pengajuan untuk tanggal ini akan dihapus secara permanen dari server dan perangkat Anda.',
         type: 'danger',
         confirmText: 'Hapus Draft',
         cancelText: 'Batal',
@@ -482,10 +534,11 @@ export default function LateExplanationScreen() {
     }
   };
 
-  // Gabungan Riwayat Pengajuan (Draft Lokal + Pending + Approved + Rejected)
+  // Gabungan Riwayat Pengajuan (Draft Lokal + Server Explanations)
   const displayHistoryList = useMemo(() => {
     // Buat item riwayat dari draft lokal
     const draftItems: LateExplanationItem[] = Object.values(drafts).map(d => ({
+      id: d.id,
       attendance_id: d.attendance_id,
       attendance_date: d.attendance_date,
       clock_in: d.clock_in,
@@ -498,10 +551,11 @@ export default function LateExplanationScreen() {
       updated_at: d.saved_at
     }));
 
-    // Saring: Jangan tampilkan draft jika attendance_id tersebut sudah ada di historyList dengan pending/approved
+    // Saring: Jangan tampilkan draft lokal jika attendance_id tersebut sudah ada di historyList
+    // baik yang draft (id sama) maupun yang sudah resmi diajukan (pending/approved)
     const validDrafts = draftItems.filter(d => {
       return !historyList.some(
-        h => h.attendance_id === d.attendance_id && h.status && !h.status.toLowerCase().includes('draft')
+        h => h.attendance_id === d.attendance_id && (h.id === d.id || (h.status && !h.status.toLowerCase().includes('draft')))
       );
     });
 
@@ -709,6 +763,39 @@ export default function LateExplanationScreen() {
 
       setHistoryList(finalHistory);
       await AsyncStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(finalHistory));
+
+      // Sinkronkan draft dari server ke state drafts
+      const serverDrafts: Record<number, LateExplanationDraft> = {};
+      finalHistory.forEach(item => {
+        if (item.status && item.status.toLowerCase().includes('draft')) {
+          serverDrafts[item.attendance_id] = {
+            id: item.id,
+            attendance_id: item.attendance_id,
+            attendance_date: item.attendance_date,
+            clock_in: item.clock_in,
+            clock_out: item.clock_out,
+            late_type: item.late_type,
+            alasan: item.alasan,
+            attachmentUri: item.bukti_file,
+            saved_at: item.updated_at || item.created_at || new Date().toISOString()
+          };
+        }
+      });
+
+      setDrafts(prev => {
+        const next = { ...prev };
+        successfullyFetchedAttIds.forEach(attId => {
+          const hasServerDraft = finalHistory.some(
+            h => h.attendance_id === attId && (h.status || '').toLowerCase().includes('draft')
+          );
+          if (!hasServerDraft && next[attId]?.id) {
+            delete next[attId];
+          }
+        });
+        const merged = { ...next, ...serverDrafts };
+        AsyncStorage.setItem(STORAGE_KEY_DRAFTS, JSON.stringify(merged)).catch(() => {});
+        return merged;
+      });
     } catch (err) {
       console.log('Error fetching explanation history:', err);
     } finally {
@@ -928,7 +1015,9 @@ export default function LateExplanationScreen() {
     });
   };
 
-  // Save Draft Handler (Dapat diedit & dihapus kapan saja selama belum diajukan)
+  // Save Draft Handler (Dapat diedit & dihapus kapan saja selama masih draft)
+  // Update: POST {{baseUrl}}/api/my/presensi/late-explanation/{{lateExplanationDraftId}}
+  // Create: POST {{baseUrl}}/api/my/presensi/late-explanation
   const handleSaveDraft = async () => {
     if (!selectedAttendanceId) {
       showToast({
@@ -948,14 +1037,103 @@ export default function LateExplanationScreen() {
       return;
     }
 
-    await saveDraft(selectedAttendanceId, {
-      late_type: lateType,
-      alasan: alasan.trim(),
-      attachmentUri: attachmentUri || null,
-      attachmentName: attachmentName || null,
-      attachmentMime: attachmentMime || null,
-      attachmentSize: attachmentSize || null
-    });
+    setSubmitting(true);
+    try {
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://dieselmart.pagaruyungdiesel.cloud';
+      const token = await AsyncStorage.getItem('userToken');
+
+      // Cek apakah draft ini sudah memiliki ID di server
+      const existingServerDraft = historyList.find(
+        h => h.attendance_id === selectedAttendanceId && (h.status || '').toLowerCase().includes('draft')
+      );
+      const draftId = existingServerDraft?.id || drafts[selectedAttendanceId]?.id;
+
+      const formData = new FormData();
+      formData.append('late_type', lateType);
+      formData.append('alasan', alasan.trim());
+      formData.append('status', 'draft');
+      formData.append('is_draft', '1');
+
+      if (!draftId) {
+        formData.append('attendance_id', String(selectedAttendanceId));
+      }
+
+      // Lampirkan file jika ada dan merupakan file lokal baru
+      if (
+        attachmentUri &&
+        (attachmentUri.startsWith('file://') || attachmentUri.startsWith('content://') || !attachmentUri.startsWith('http'))
+      ) {
+        const safeName = attachmentName || 'bukti_foto.jpg';
+        const mimeType = attachmentMime || 'image/jpeg';
+        const normalizedUri =
+          Platform.OS === 'android' && !attachmentUri.startsWith('file://') && !attachmentUri.startsWith('content://')
+            ? `file://${attachmentUri}`
+            : attachmentUri;
+
+        formData.append('bukti_file', {
+          uri: normalizedUri,
+          name: safeName,
+          type: mimeType
+        } as any);
+      }
+
+      let res: { ok: boolean; status: number; data: any };
+      if (draftId) {
+        // UPDATE DRAFT: POST {{baseUrl}}/api/my/presensi/late-explanation/{{lateExplanationDraftId}}
+        let updateUrl = `${apiUrl}/api/my/presensi/late-explanation/${draftId}`;
+        res = await uploadLateExplanationMultipart(updateUrl, formData, token);
+        if (res.status === 404) {
+          updateUrl = `${apiUrl}/api/presensi/late-explanation/${draftId}`;
+          res = await uploadLateExplanationMultipart(updateUrl, formData, token);
+        }
+      } else {
+        // CREATE DRAFT: POST {{baseUrl}}/api/my/presensi/late-explanation
+        let createUrl = `${apiUrl}/api/my/presensi/late-explanation`;
+        res = await uploadLateExplanationMultipart(createUrl, formData, token);
+        if (res.status === 404) {
+          createUrl = `${apiUrl}/api/presensi/late-explanation`;
+          res = await uploadLateExplanationMultipart(createUrl, formData, token);
+        }
+      }
+
+      const returnedId = res.data?.id || res.data?.explanation?.id || res.data?.data?.id || draftId;
+      const returnedFile = res.data?.bukti_file || res.data?.explanation?.bukti_file || attachmentUri;
+
+      await saveDraft(selectedAttendanceId, {
+        id: returnedId,
+        late_type: lateType,
+        alasan: alasan.trim(),
+        attachmentUri: returnedFile || null,
+        attachmentName: attachmentName || null,
+        attachmentMime: attachmentMime || null,
+        attachmentSize: attachmentSize || null
+      });
+
+      showToast({
+        title: draftId ? 'Draft Diperbarui' : 'Draft Tersimpan',
+        message: 'Draft pengajuan berhasil disimpan di server. Anda dapat mengedit atau menghapusnya kapan saja.',
+        type: 'success'
+      });
+
+      fetchAllExplanationsHistory(attendances);
+    } catch {
+      // Simpan lokal sebagai fallback bila jaringan bermasalah
+      await saveDraft(selectedAttendanceId, {
+        late_type: lateType,
+        alasan: alasan.trim(),
+        attachmentUri: attachmentUri || null,
+        attachmentName: attachmentName || null,
+        attachmentMime: attachmentMime || null,
+        attachmentSize: attachmentSize || null
+      });
+      showToast({
+        title: 'Draft Disimpan Lokal',
+        message: 'Draft tersimpan di perangkat Anda.',
+        type: 'info'
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Submit Handler (Mengirim ke backend, status menjadi pending dan TERKUNCI)
@@ -989,13 +1167,28 @@ export default function LateExplanationScreen() {
       const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://dieselmart.pagaruyungdiesel.cloud';
       const token = await AsyncStorage.getItem('userToken');
 
+      // Cek apakah ada draft yang sudah memiliki ID di server
+      const existingServerDraft = historyList.find(
+        h => h.attendance_id === selectedAttendanceId && (h.status || '').toLowerCase().includes('draft')
+      );
+      const draftId = existingServerDraft?.id || drafts[selectedAttendanceId!]?.id;
+
       const formData = new FormData();
-      formData.append('attendance_id', String(selectedAttendanceId));
       formData.append('late_type', lateType);
       formData.append('alasan', alasan.trim());
+      formData.append('status', 'pending');
+      formData.append('action', 'submit');
+      formData.append('is_draft', '0');
 
-      // Kirim lampiran foto jika ada
-      if (attachmentUri) {
+      if (!draftId) {
+        formData.append('attendance_id', String(selectedAttendanceId));
+      }
+
+      // Kirim lampiran foto jika ada dan merupakan file lokal baru
+      if (
+        attachmentUri &&
+        (attachmentUri.startsWith('file://') || attachmentUri.startsWith('content://') || !attachmentUri.startsWith('http'))
+      ) {
         const safeName = attachmentName || 'bukti_foto.jpg';
         const mimeType = attachmentMime || 'image/jpeg';
 
@@ -1011,14 +1204,36 @@ export default function LateExplanationScreen() {
         } as any);
       }
 
-      // Coba endpoint /api/my/presensi/late-explanation terlebih dahulu
-      let targetUrl = `${apiUrl}/api/my/presensi/late-explanation`;
-      let res = await uploadLateExplanationMultipart(targetUrl, formData, token);
+      let res: { ok: boolean; status: number; data: any };
 
-      // Fallback jika 404 ke /api/presensi/late-explanation
-      if (res.status === 404) {
-        targetUrl = `${apiUrl}/api/presensi/late-explanation`;
+      if (draftId) {
+        // Jika sebelumnya berstatus draft di server, update dan ajukan draft tersebut
+        let updateUrl = `${apiUrl}/api/my/presensi/late-explanation/${draftId}`;
+        res = await uploadLateExplanationMultipart(updateUrl, formData, token);
+        if (res.status === 404) {
+          updateUrl = `${apiUrl}/api/presensi/late-explanation/${draftId}`;
+          res = await uploadLateExplanationMultipart(updateUrl, formData, token);
+        }
+
+        // Jika update tidak berhasil, coba submit via create endpoint
+        if (!res.ok) {
+          formData.append('attendance_id', String(selectedAttendanceId));
+          let targetUrl = `${apiUrl}/api/my/presensi/late-explanation`;
+          res = await uploadLateExplanationMultipart(targetUrl, formData, token);
+          if (res.status === 404) {
+            targetUrl = `${apiUrl}/api/presensi/late-explanation`;
+            res = await uploadLateExplanationMultipart(targetUrl, formData, token);
+          }
+        }
+      } else {
+        // Jika belum ada draft di server, buat pengajuan baru
+        formData.append('attendance_id', String(selectedAttendanceId));
+        let targetUrl = `${apiUrl}/api/my/presensi/late-explanation`;
         res = await uploadLateExplanationMultipart(targetUrl, formData, token);
+        if (res.status === 404) {
+          targetUrl = `${apiUrl}/api/presensi/late-explanation`;
+          res = await uploadLateExplanationMultipart(targetUrl, formData, token);
+        }
       }
 
       if (res.ok) {
@@ -1033,7 +1248,7 @@ export default function LateExplanationScreen() {
 
         // Temukan record presensi untuk menyimpan data tanggal
         const selectedAtt = attendances.find(a => a.id === selectedAttendanceId);
-        const expId = res.data?.id || res.data?.explanation?.id || res.data?.data?.id;
+        const expId = res.data?.id || res.data?.explanation?.id || res.data?.data?.id || draftId;
 
         const savedItem: LateExplanationItem = {
           id: expId || undefined,
@@ -1488,7 +1703,9 @@ export default function LateExplanationScreen() {
                       </TouchableOpacity>
                     </View>
                     <Text style={styles.draftNoticeDesc}>
-                      Tersimpan di perangkat Anda ({formatDateTimeIndo(drafts[selectedAttendance.id].saved_at)}). Anda dapat mengedit isi form atau menghapus draft ini.
+                      {drafts[selectedAttendance.id]?.id
+                        ? `Tersimpan di server (Draft ID: #${drafts[selectedAttendance.id]?.id}). Anda dapat mengedit, memperbarui, atau menghapus draft ini sebelum diajukan.`
+                        : `Tersimpan di perangkat Anda (${formatDateTimeIndo(drafts[selectedAttendance.id]?.saved_at)}). Anda dapat mengedit isi form atau menghapus draft ini.`}
                     </Text>
                   </View>
                 )}
@@ -1905,7 +2122,7 @@ export default function LateExplanationScreen() {
                                 </Text>
                                 <Text style={[styles.historyFullStatusSubtitle, { color: colStatus }]}>
                                   {isDraft
-                                    ? 'Draft tersimpan di HP Anda. Silakan lanjutkan pengisian atau ajukan di tab Formulir.'
+                                    ? `Draft tersimpan${item.id ? ` di server (#${item.id})` : ' di perangkat'}. Silakan lanjutkan edit atau ajukan di tab Formulir.`
                                     : isApp
                                     ? 'Pengajuan klarifikasi telah disetujui oleh tim personalia.'
                                     : isRej
