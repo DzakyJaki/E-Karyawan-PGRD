@@ -19,6 +19,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { theme } from '../../../core/theme';
 import { useToast } from '../../../core/ToastContext';
+import { useConfirm } from '../../../core/ConfirmContext';
 import { suspendAppLock, resumeAppLock } from '../../../components/AppLock';
 
 interface AttendanceRecord {
@@ -53,7 +54,7 @@ export interface LateExplanationItem {
   late_type: LateType;
   alasan: string;
   bukti_file?: string | null;
-  status?: 'pending' | 'approved' | 'rejected' | 'menunggu' | 'disetujui' | 'ditolak' | string;
+  status?: 'draft' | 'pending' | 'approved' | 'rejected' | 'menunggu' | 'disetujui' | 'ditolak' | string;
   catatan?: string | null;
   catatan_penolakan?: string | null;
   admin_note?: string | null;
@@ -63,6 +64,20 @@ export interface LateExplanationItem {
   updated_at?: string | null;
 }
 
+export interface LateExplanationDraft {
+  attendance_id: number;
+  attendance_date?: string;
+  clock_in?: string | null;
+  clock_out?: string | null;
+  late_type: LateType;
+  alasan: string;
+  attachmentUri?: string | null;
+  attachmentName?: string | null;
+  attachmentMime?: string | null;
+  attachmentSize?: number | null;
+  saved_at: string;
+}
+
 const MONTH_NAMES_ID = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
@@ -70,10 +85,12 @@ const MONTH_NAMES_ID = [
 
 const DAY_NAMES_ID = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 const STORAGE_KEY_HISTORY = '@late_explanations_history_v1';
+const STORAGE_KEY_DRAFTS = '@late_explanations_drafts_v1';
 
 export default function LateExplanationScreen() {
   const searchParams = useLocalSearchParams<{ attendance_id?: string; tab?: string }>();
   const { showToast } = useToast();
+  const { showConfirm } = useConfirm();
 
   // Active Tab: 'form' | 'riwayat'
   const [activeTab, setActiveTab] = useState<'form' | 'riwayat'>(
@@ -94,6 +111,9 @@ export default function LateExplanationScreen() {
   // Riwayat Pengajuan State
   const [historyList, setHistoryList] = useState<LateExplanationItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Local Drafts State: map attendance_id -> LateExplanationDraft
+  const [drafts, setDrafts] = useState<Record<number, LateExplanationDraft>>({});
 
   // Form Fields
   const [lateType, setLateType] = useState<LateType>('masuk');
@@ -274,17 +294,21 @@ export default function LateExplanationScreen() {
 
   // Helper: Status pengajuan form untuk suatu presensi
   // Aturan:
-  // 1. Jika presensi diajukan (pending) -> tidak tampil lagi ke formulir
-  // 2. Jika disetujui (approved) -> tidak tampil lagi ke formulir
-  // 3. Jika ditolak 1 kali -> kembali ke formulir keterlambatan
-  // 4. Jika ditolak >= 2 kali -> tidak bisa lagi masuk ke formulir keterlambatan (hanya di riwayat saja)
+  // 1. Jika draft -> tetap tampil di formulir (bisa diedit / dihapus)
+  // 2. Jika diajukan (pending) -> terkunci (tidak tampil lagi di formulir)
+  // 3. Jika disetujui (approved) -> terkunci permanen
+  // 4. Jika ditolak 1 kali -> kembali ke formulir untuk kesempatan perbaikan
+  // 5. Jika ditolak >= 2 kali -> terkunci (hanya ada di riwayat)
   const getAttendanceSubmissionStatus = useCallback((attendanceId: number) => {
     const exps = historyList.filter(h => h.attendance_id === attendanceId);
+    const hasDraft = Boolean(drafts[attendanceId]);
+
     if (exps.length === 0) {
       return {
         hasSubmitted: false,
         hasPending: false,
         hasApproved: false,
+        hasDraft,
         rejectedCount: 0,
         canResubmit: true,
         lastExplanation: null
@@ -293,7 +317,7 @@ export default function LateExplanationScreen() {
 
     const hasPending = exps.some(e => {
       const s = (e.status || '').toLowerCase();
-      return s.includes('pending') || s.includes('menunggu');
+      return (s.includes('pending') || s.includes('menunggu')) && !s.includes('draft');
     });
 
     const hasApproved = exps.some(e => {
@@ -320,11 +344,12 @@ export default function LateExplanationScreen() {
       hasSubmitted: true,
       hasPending,
       hasApproved,
+      hasDraft,
       rejectedCount,
       canResubmit,
       lastExplanation: sortedExps[0] || null
     };
-  }, [historyList]);
+  }, [historyList, drafts]);
 
   // Menampilkan catatan presensi yang masih boleh diajukan formulir keterlambatannya
   const lateAttendances = useMemo(() => {
@@ -369,6 +394,124 @@ export default function LateExplanationScreen() {
       setHistoryList(updated);
     } catch {}
   };
+
+  // Helper: Load local cached drafts
+  const loadLocalDrafts = async (): Promise<Record<number, LateExplanationDraft>> => {
+    try {
+      const raw = await AsyncStorage.getItem(STORAGE_KEY_DRAFTS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch {}
+    return {};
+  };
+
+  // Helper: Save draft for an attendance
+  const saveDraft = async (
+    attendanceId: number,
+    draftData: Omit<LateExplanationDraft, 'attendance_id' | 'saved_at'>
+  ) => {
+    try {
+      const att = attendances.find(a => a.id === attendanceId) || lateAttendances.find(a => a.id === attendanceId);
+      const updatedDrafts = {
+        ...drafts,
+        [attendanceId]: {
+          attendance_id: attendanceId,
+          attendance_date: att?.date,
+          clock_in: att?.clock_in,
+          clock_out: att?.clock_out,
+          ...draftData,
+          saved_at: new Date().toISOString()
+        }
+      };
+      await AsyncStorage.setItem(STORAGE_KEY_DRAFTS, JSON.stringify(updatedDrafts));
+      setDrafts(updatedDrafts);
+      showToast({
+        title: 'Draft Tersimpan',
+        message: 'Pengajuan disimpan sebagai draft. Anda dapat mengedit atau menghapusnya kapan saja.',
+        type: 'success'
+      });
+    } catch {
+      showToast({
+        title: 'Gagal Menyimpan Draft',
+        message: 'Terjadi kesalahan saat menyimpan draft lokal.',
+        type: 'error'
+      });
+    }
+  };
+
+  // Helper: Remove draft for an attendance
+  const removeDraft = async (attendanceId: number, silent = false) => {
+    const doDelete = async () => {
+      try {
+        const next = { ...drafts };
+        delete next[attendanceId];
+        await AsyncStorage.setItem(STORAGE_KEY_DRAFTS, JSON.stringify(next));
+        setDrafts(next);
+
+        if (selectedAttendanceId === attendanceId) {
+          setAlasan('');
+          setAttachmentUri(null);
+          setAttachmentName(null);
+          setAttachmentMime(null);
+          setAttachmentSize(null);
+        }
+
+        if (!silent) {
+          showToast({
+            title: 'Draft Dihapus',
+            message: 'Draft pengajuan berhasil dihapus.',
+            type: 'info'
+          });
+        }
+      } catch {}
+    };
+
+    if (silent) {
+      await doDelete();
+    } else {
+      showConfirm({
+        title: 'Hapus Draft Pengajuan?',
+        message: 'Draft pengajuan untuk tanggal ini akan dihapus dari penyimpanan perangkat Anda.',
+        type: 'danger',
+        confirmText: 'Hapus Draft',
+        cancelText: 'Batal',
+        onConfirm: doDelete
+      });
+    }
+  };
+
+  // Gabungan Riwayat Pengajuan (Draft Lokal + Pending + Approved + Rejected)
+  const displayHistoryList = useMemo(() => {
+    // Buat item riwayat dari draft lokal
+    const draftItems: LateExplanationItem[] = Object.values(drafts).map(d => ({
+      attendance_id: d.attendance_id,
+      attendance_date: d.attendance_date,
+      clock_in: d.clock_in,
+      clock_out: d.clock_out,
+      late_type: d.late_type,
+      alasan: d.alasan,
+      bukti_file: d.attachmentUri,
+      status: 'draft',
+      created_at: d.saved_at,
+      updated_at: d.saved_at
+    }));
+
+    // Saring: Jangan tampilkan draft jika attendance_id tersebut sudah ada di historyList dengan pending/approved
+    const validDrafts = draftItems.filter(d => {
+      return !historyList.some(
+        h => h.attendance_id === d.attendance_id && h.status && !h.status.toLowerCase().includes('draft')
+      );
+    });
+
+    const combined = [...validDrafts, ...historyList];
+    return combined.sort((a, b) => {
+      const dateA = a.created_at || a.attendance_date || '';
+      const dateB = b.created_at || b.attendance_date || '';
+      return dateB.localeCompare(dateA);
+    });
+  }, [drafts, historyList]);
 
   // Fetch Attendance History from Server (Current Month + Previous Month if date <= 3)
   const fetchAttendances = useCallback(async () => {
@@ -577,6 +720,8 @@ export default function LateExplanationScreen() {
   useEffect(() => {
     const init = async () => {
       const local = await loadLocalHistory();
+      const localDrafts = await loadLocalDrafts();
+      setDrafts(localDrafts);
       setHistoryList(local);
       await fetchAttendances();
     };
@@ -603,17 +748,33 @@ export default function LateExplanationScreen() {
     }
   }, [lateAttendances, selectedAttendanceId, getDaysDiff]);
 
-  // Otomatis tentukan jenis keterlambatan (masuk / istirahat / pulang_cepat) dari presensi yang dipilih
+  // Otomatis tentukan jenis keterlambatan & muat draft jika ada dari presensi yang dipilih
   useEffect(() => {
     if (selectedAttendanceId) {
       setFormErrors({});
-      const target = lateAttendances.find(a => a.id === selectedAttendanceId) || attendances.find(a => a.id === selectedAttendanceId);
-      if (target) {
-        const { primaryType } = detectLateType(target);
-        setLateType(primaryType);
+      // Cek apakah ada draft tersimpan untuk presensi ini
+      if (drafts[selectedAttendanceId]) {
+        const d = drafts[selectedAttendanceId];
+        setLateType(d.late_type);
+        setAlasan(d.alasan || '');
+        setAttachmentUri(d.attachmentUri || null);
+        setAttachmentName(d.attachmentName || null);
+        setAttachmentMime(d.attachmentMime || null);
+        setAttachmentSize(d.attachmentSize || null);
+      } else {
+        const target = lateAttendances.find(a => a.id === selectedAttendanceId) || attendances.find(a => a.id === selectedAttendanceId);
+        if (target) {
+          const { primaryType } = detectLateType(target);
+          setLateType(primaryType);
+        }
+        setAlasan('');
+        setAttachmentUri(null);
+        setAttachmentName(null);
+        setAttachmentMime(null);
+        setAttachmentSize(null);
       }
     }
-  }, [selectedAttendanceId, lateAttendances, attendances, detectLateType]);
+  }, [selectedAttendanceId, lateAttendances, attendances, detectLateType, drafts]);
 
   // Data presensi yang saat ini dipilih
   const selectedAttendance = useMemo(() => {
@@ -767,7 +928,37 @@ export default function LateExplanationScreen() {
     });
   };
 
-  // Submit Handler
+  // Save Draft Handler (Dapat diedit & dihapus kapan saja selama belum diajukan)
+  const handleSaveDraft = async () => {
+    if (!selectedAttendanceId) {
+      showToast({
+        title: 'Pilih Presensi',
+        message: 'Silakan pilih tanggal presensi terlebih dahulu sebelum menyimpan draft.',
+        type: 'warning'
+      });
+      return;
+    }
+
+    if (!alasan.trim()) {
+      showToast({
+        title: 'Alasan Belum Diisi',
+        message: 'Tuliskan catatan atau draf alasan keterlambatan Anda sebelum menyimpan.',
+        type: 'warning'
+      });
+      return;
+    }
+
+    await saveDraft(selectedAttendanceId, {
+      late_type: lateType,
+      alasan: alasan.trim(),
+      attachmentUri: attachmentUri || null,
+      attachmentName: attachmentName || null,
+      attachmentMime: attachmentMime || null,
+      attachmentSize: attachmentSize || null
+    });
+  };
+
+  // Submit Handler (Mengirim ke backend, status menjadi pending dan TERKUNCI)
   const handleSubmit = async () => {
     const errors: { alasan?: string; attendance?: string } = {};
 
@@ -832,10 +1023,13 @@ export default function LateExplanationScreen() {
 
       if (res.ok) {
         showToast({
-          title: 'Berhasil Terkirim',
-          message: 'Klarifikasi keterlambatan berhasil diajukan kepada manajemen.',
+          title: 'Berhasil Diajukan',
+          message: 'Klarifikasi keterlambatan berhasil diajukan dan terkunci menunggu review personalia.',
           type: 'success'
         });
+
+        // Hapus draft lokal untuk presensi ini jika ada (sudah resmi diajukan)
+        await removeDraft(selectedAttendanceId!, true);
 
         // Temukan record presensi untuk menyimpan data tanggal
         const selectedAtt = attendances.find(a => a.id === selectedAttendanceId);
@@ -866,7 +1060,7 @@ export default function LateExplanationScreen() {
         // Segera sinkronkan ulang seluruh riwayat dari backend
         fetchAllExplanationsHistory(attendances);
 
-        // Beralih ke Tab Riwayat untuk melihat hasil pengajuan
+        // Beralih ke Tab Riwayat untuk melihat hasil pengajuan (terkunci)
         setActiveTab('riwayat');
       } else {
         const errData = res.data || {};
@@ -924,9 +1118,9 @@ export default function LateExplanationScreen() {
           <Text style={[styles.tabText, activeTab === 'riwayat' && styles.tabTextActive]}>
             Riwayat Pengajuan
           </Text>
-          {historyList.length > 0 && (
+          {displayHistoryList.length > 0 && (
             <View style={styles.tabCountBadge}>
-              <Text style={styles.tabCountBadgeText}>{historyList.length}</Text>
+              <Text style={styles.tabCountBadgeText}>{displayHistoryList.length}</Text>
             </View>
           )}
         </TouchableOpacity>
@@ -1016,13 +1210,18 @@ export default function LateExplanationScreen() {
 
                     const statusInfo = getAttendanceSubmissionStatus(item.id);
                     const isResubmit = statusInfo.rejectedCount === 1;
+                    const isDraft = Boolean(drafts[item.id]);
 
                     let badgeText = '';
                     let badgeBg = '';
                     let badgeColor = '';
                     let isPersonalia = false;
 
-                    if (isResubmit) {
+                    if (isDraft) {
+                      badgeText = 'Draft';
+                      badgeBg = '#e0f2fe';
+                      badgeColor = '#0369a1';
+                    } else if (isResubmit) {
                       badgeText = 'Pengajuan Ulang';
                       badgeBg = '#fef3c7';
                       badgeColor = '#b45309';
@@ -1099,7 +1298,10 @@ export default function LateExplanationScreen() {
                                 {isPersonalia && (
                                   <MaterialIcons name="support-agent" size={12} color={badgeColor} style={{ marginRight: 3 }} />
                                 )}
-                                <Text style={[styles.remainingBadgeText, { color: badgeColor, fontWeight: isPersonalia ? '700' : '600' }]}>
+                                {isDraft && (
+                                  <MaterialIcons name="edit-note" size={14} color={badgeColor} style={{ marginRight: 2 }} />
+                                )}
+                                <Text style={[styles.remainingBadgeText, { color: badgeColor, fontWeight: (isPersonalia || isDraft) ? '700' : '600' }]}>
                                   {badgeText}
                                 </Text>
                               </View>
@@ -1159,8 +1361,29 @@ export default function LateExplanationScreen() {
                                 </View>
                               )}
 
-                              {/* Indikator Status Pengajuan Form Jika Ada */}
+                              {/* Indikator Status Pengajuan Form / Draft Jika Ada */}
                               {(() => {
+                                if (drafts[item.id]) {
+                                  return (
+                                    <View
+                                      style={[
+                                        styles.lateDetailPill,
+                                        { backgroundColor: '#e0f2fe', borderColor: '#bae6fd' }
+                                      ]}
+                                    >
+                                      <MaterialIcons
+                                        name="edit-note"
+                                        size={12}
+                                        color="#0369a1"
+                                        style={{ marginRight: 3 }}
+                                      />
+                                      <Text style={[styles.lateDetailPillBadge, { color: '#0369a1', fontWeight: '700' }]}>
+                                        Draft Tersimpan
+                                      </Text>
+                                    </View>
+                                  );
+                                }
+
                                 const itemExp = historyList.find(h => h.attendance_id === item.id);
                                 if (!itemExp) return null;
                                 const st = (itemExp.status || 'pending').toLowerCase();
@@ -1246,6 +1469,29 @@ export default function LateExplanationScreen() {
                   <MaterialIcons name="edit-note" size={22} color={theme.colors.primary} />
                   <Text style={styles.sectionTitle}>Detail Alasan & Berkas</Text>
                 </View>
+
+                {/* BANNER DRAFT TERSIMPAN (JIKA ADA DRAFT UNTUK PRESENSI INI) */}
+                {drafts[selectedAttendance.id] && (
+                  <View style={styles.draftNoticeBanner}>
+                    <View style={styles.draftNoticeHeader}>
+                      <View style={styles.draftNoticeTitleRow}>
+                        <MaterialIcons name="edit-document" size={17} color="#0369a1" style={{ marginRight: 6 }} />
+                        <Text style={styles.draftNoticeTitle}>Draft Formulir Tersimpan</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.btnDeleteDraftMini}
+                        onPress={() => removeDraft(selectedAttendance.id)}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialIcons name="delete-outline" size={15} color="#ef4444" style={{ marginRight: 4 }} />
+                        <Text style={styles.btnDeleteDraftMiniText}>Hapus Draft</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.draftNoticeDesc}>
+                      Tersimpan di perangkat Anda ({formatDateTimeIndo(drafts[selectedAttendance.id].saved_at)}). Anda dapat mengedit isi form atau menghapus draft ini.
+                    </Text>
+                  </View>
+                )}
 
                 {/* BANNER PENGAJUAN ULANG (JIKA SEBELUMNYA DITOLAK 1 KALI) */}
                 {(() => {
@@ -1439,29 +1685,47 @@ export default function LateExplanationScreen() {
                   )}
                 </View>
 
-                {/* SUBMIT BUTTON */}
-                <View style={styles.submitWrapper}>
-                  <TouchableOpacity
-                    style={[
-                      styles.btnSubmit,
-                      submitting && { opacity: 0.7 }
-                    ]}
-                    onPress={handleSubmit}
-                    disabled={submitting}
-                    activeOpacity={0.8}
-                  >
-                    {submitting ? (
-                      <View style={styles.submitLoadingRow}>
-                        <ActivityIndicator size="small" color="#ffffff" />
-                        <Text style={styles.btnSubmitText}>Mengirim Form...</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.submitLoadingRow}>
-                        <MaterialIcons name="send" size={18} color="#ffffff" style={{ marginRight: 6 }} />
-                        <Text style={styles.btnSubmitText}>Kirim Form Pengajuan Presensi</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
+                {/* TOMBOL AKSI: SIMPAN DRAFT & AJUKAN SEKARANG */}
+                <View style={styles.formActionButtonsContainer}>
+                  <View style={styles.formActionButtonsRow}>
+                    <TouchableOpacity
+                      style={[styles.btnSaveDraft, submitting && { opacity: 0.6 }]}
+                      onPress={handleSaveDraft}
+                      disabled={submitting}
+                      activeOpacity={0.8}
+                    >
+                      <MaterialIcons name="save" size={18} color="#0284c7" style={{ marginRight: 6 }} />
+                      <Text style={styles.btnSaveDraftText}>
+                        {drafts[selectedAttendance.id] ? 'Perbarui Draft' : 'Simpan Draft'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.btnSubmit, submitting && { opacity: 0.7 }]}
+                      onPress={handleSubmit}
+                      disabled={submitting}
+                      activeOpacity={0.8}
+                    >
+                      {submitting ? (
+                        <View style={styles.submitLoadingRow}>
+                          <ActivityIndicator size="small" color="#ffffff" />
+                          <Text style={styles.btnSubmitText}>Mengirim...</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.submitLoadingRow}>
+                          <MaterialIcons name="send" size={18} color="#ffffff" style={{ marginRight: 6 }} />
+                          <Text style={styles.btnSubmitText}>Ajukan Sekarang</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.submitHintContainer}>
+                    <MaterialIcons name="lock-outline" size={14} color="#64748b" style={{ marginRight: 5, marginTop: 1 }} />
+                    <Text style={styles.submitHintText}>
+                      Draft dapat diedit atau dihapus kapan saja. Saat diajukan, pengajuan berubah menjadi <Text style={{ fontWeight: '700', color: '#b45309' }}>Pending</Text> dan <Text style={{ fontWeight: '700', color: '#1e293b' }}>terkunci</Text> (tidak dapat diubah lagi).
+                    </Text>
+                  </View>
                 </View>
               </View>
             ) : null}
@@ -1476,12 +1740,12 @@ export default function LateExplanationScreen() {
                 <ActivityIndicator size="small" color={theme.colors.primary} />
                 <Text style={styles.loadingText}>Memuat riwayat pengajuan...</Text>
               </View>
-            ) : historyList.length === 0 ? (
+            ) : displayHistoryList.length === 0 ? (
               <View style={styles.emptyHistoryBox}>
                 <MaterialCommunityIcons name="clipboard-text-clock-outline" size={54} color={theme.colors.textMuted} />
                 <Text style={styles.emptyHistoryTitle}>Belum Ada Riwayat Pengajuan</Text>
                 <Text style={styles.emptyHistoryDesc}>
-                  Anda belum pernah mengajukan formulir klarifikasi keterlambatan.
+                  Anda belum pernah mengajukan formulir klarifikasi keterlambatan atau menyimpan draft.
                 </Text>
                 <TouchableOpacity
                   style={styles.btnGoToForm}
@@ -1495,18 +1759,26 @@ export default function LateExplanationScreen() {
             ) : (
               <View>
                 <View style={styles.historyListWrapper}>
-                  {historyList.map((item, index) => {
+                  {displayHistoryList.map((item, index) => {
                     const s = (item.status || 'pending').toLowerCase();
+                    const isDraft = s.includes('draft');
                     const isApp = s.includes('approv') || s.includes('setuju') || s.includes('terima');
                     const isRej = s.includes('reject') || s.includes('tolak');
+                    const isPending = !isDraft && !isApp && !isRej;
 
                     let bgStatus = '#fef3c7';
                     let colStatus = '#b45309';
                     let shortStatus = 'Menunggu';
                     let fullStatus = 'Masih menunggu review personelia';
-                    let statusIcon: 'schedule' | 'check-circle' | 'cancel' = 'schedule';
+                    let statusIcon: 'schedule' | 'check-circle' | 'cancel' | 'edit-note' = 'schedule';
 
-                    if (isApp) {
+                    if (isDraft) {
+                      bgStatus = '#e0f2fe';
+                      colStatus = '#0369a1';
+                      shortStatus = 'Draft';
+                      fullStatus = 'Draft Tersimpan (Belum Diajukan)';
+                      statusIcon = 'edit-note';
+                    } else if (isApp) {
                       bgStatus = '#dcfce7';
                       colStatus = '#15803d';
                       shortStatus = 'Disetujui';
@@ -1522,8 +1794,10 @@ export default function LateExplanationScreen() {
                       statusIcon = 'cancel';
                     }
 
-                    const itemKey = item.id ? `id_${item.id}` : `att_${item.attendance_id}_${item.late_type}_${index}`;
-                    const isExpanded = expandedHistoryKeys[itemKey] ?? (historyList.length === 1 || index === 0);
+                    const itemKey = isDraft
+                      ? `draft_${item.attendance_id}`
+                      : item.id ? `id_${item.id}` : `att_${item.attendance_id}_${item.late_type}_${index}`;
+                    const isExpanded = expandedHistoryKeys[itemKey] ?? (displayHistoryList.length === 1 || index === 0);
 
                     let typeLabel = 'Terlambat Masuk';
                     let typeIcon: 'login' | 'restaurant' | 'logout' = 'login';
@@ -1591,7 +1865,7 @@ export default function LateExplanationScreen() {
 
                             {item.created_at && (
                               <Text style={styles.historyCreatedDate}>
-                                Diajukan: {formatDateTimeIndo(item.created_at)}
+                                {isDraft ? 'Disimpan: ' : 'Diajukan: '}{formatDateTimeIndo(item.created_at)}
                               </Text>
                             )}
                           </View>
@@ -1630,11 +1904,13 @@ export default function LateExplanationScreen() {
                                   {fullStatus}
                                 </Text>
                                 <Text style={[styles.historyFullStatusSubtitle, { color: colStatus }]}>
-                                  {isApp
+                                  {isDraft
+                                    ? 'Draft tersimpan di HP Anda. Silakan lanjutkan pengisian atau ajukan di tab Formulir.'
+                                    : isApp
                                     ? 'Pengajuan klarifikasi telah disetujui oleh tim personalia.'
                                     : isRej
                                     ? 'Pengajuan ditolak. Silakan periksa catatan penolakan di bawah.'
-                                    : 'Pengajuan sedang dalam antrean peninjauan oleh tim personalia.'}
+                                    : 'Pengajuan telah dikirim dan terkunci menunggu review tim personalia.'}
                                 </Text>
                                 {Boolean(item.reviewed_at || (isApp || isRej ? item.updated_at : null)) && (
                                   <Text style={[styles.historyFullStatusSubtitle, { color: colStatus, marginTop: 4, fontWeight: '700' }]}>
@@ -1643,6 +1919,51 @@ export default function LateExplanationScreen() {
                                 )}
                               </View>
                             </View>
+
+                            {/* Aksi Khusus untuk Draft: Lanjutkan Edit atau Hapus */}
+                            {isDraft && (
+                              <View style={styles.historyDraftActionsRow}>
+                                <TouchableOpacity
+                                  style={styles.btnDraftActionEdit}
+                                  onPress={() => {
+                                    setSelectedAttendanceId(item.attendance_id);
+                                    setActiveTab('form');
+                                  }}
+                                  activeOpacity={0.8}
+                                >
+                                  <MaterialIcons name="edit" size={16} color="#ffffff" style={{ marginRight: 6 }} />
+                                  <Text style={styles.btnDraftActionEditText}>Lanjutkan Edit / Ajukan</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                  style={styles.btnDraftActionDelete}
+                                  onPress={() => removeDraft(item.attendance_id)}
+                                  activeOpacity={0.8}
+                                >
+                                  <MaterialIcons name="delete-outline" size={16} color="#ef4444" style={{ marginRight: 4 }} />
+                                  <Text style={styles.btnDraftActionDeleteText}>Hapus Draft</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+
+                            {/* Tanda Pengajuan Terkunci untuk Status Pending & Approved */}
+                            {isPending && (
+                              <View style={styles.lockedNoticeRow}>
+                                <MaterialIcons name="lock" size={14} color="#b45309" style={{ marginRight: 6 }} />
+                                <Text style={styles.lockedNoticeText}>
+                                  Terkunci: Pengajuan telah dikirim dan menunggu persetujuan personalia (tidak dapat diedit atau dihapus).
+                                </Text>
+                              </View>
+                            )}
+
+                            {isApp && (
+                              <View style={[styles.lockedNoticeRow, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
+                                <MaterialIcons name="lock" size={14} color="#15803d" style={{ marginRight: 6 }} />
+                                <Text style={[styles.lockedNoticeText, { color: '#15803d' }]}>
+                                  Terkunci: Pengajuan telah disetujui personalia dan tersimpan permanen.
+                                </Text>
+                              </View>
+                            )}
 
                             {/* Alasan Lengkap */}
                             <View style={styles.historyReasonBox}>
@@ -1746,6 +2067,37 @@ export default function LateExplanationScreen() {
                                 )}
                               </View>
                             )}
+
+                            {/* Tombol Ajukan Ulang jika Ditolak 1 Kali */}
+                            {isRej && (() => {
+                              const statusInfo = getAttendanceSubmissionStatus(item.attendance_id);
+                              if (statusInfo.rejectedCount === 1) {
+                                return (
+                                  <View style={{ marginTop: 12 }}>
+                                    <TouchableOpacity
+                                      style={styles.btnResubmitFromHistory}
+                                      onPress={() => {
+                                        setSelectedAttendanceId(item.attendance_id);
+                                        setActiveTab('form');
+                                      }}
+                                      activeOpacity={0.8}
+                                    >
+                                      <MaterialIcons name="replay" size={16} color="#ffffff" style={{ marginRight: 6 }} />
+                                      <Text style={styles.btnResubmitFromHistoryText}>Ajukan Ulang Formulir (Perbaikan)</Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                );
+                              } else {
+                                return (
+                                  <View style={[styles.lockedNoticeRow, { backgroundColor: '#fef2f2', borderColor: '#fecaca', marginTop: 10 }]}>
+                                    <MaterialIcons name="lock" size={14} color="#b91c1c" style={{ marginRight: 6 }} />
+                                    <Text style={[styles.lockedNoticeText, { color: '#b91c1c' }]}>
+                                      Terkunci: Batas kesempatan pengajuan (2x) telah habis.
+                                    </Text>
+                                  </View>
+                                );
+                              }
+                            })()}
                           </View>
                         )}
                       </View>
@@ -2363,14 +2715,78 @@ const styles = StyleSheet.create({
     padding: 8
   },
 
-  // SUBMIT BUTTONS
-  submitWrapper: {
+  // DRAFT & FORM ACTION BUTTONS
+  draftNoticeBanner: {
+    backgroundColor: '#f0f9ff',
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16
+  },
+  draftNoticeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6
+  },
+  draftNoticeTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  draftNoticeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0369a1'
+  },
+  btnDeleteDraftMini: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#fee2e2'
+  },
+  btnDeleteDraftMiniText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#ef4444'
+  },
+  draftNoticeDesc: {
+    fontSize: 12,
+    color: '#0369a1',
+    lineHeight: 17
+  },
+  formActionButtonsContainer: {
     marginTop: 22
   },
+  formActionButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  btnSaveDraft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#0284c7',
+    borderRadius: 12,
+    paddingVertical: 13,
+    elevation: 1
+  },
+  btnSaveDraftText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#0284c7'
+  },
   btnSubmit: {
+    flex: 1.2,
     backgroundColor: '#ea580c',
     borderRadius: 12,
-    paddingVertical: 14,
+    paddingVertical: 13.5,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 3,
@@ -2385,9 +2801,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   btnSubmitText: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '700',
     color: '#ffffff'
+  },
+  submitHintContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 10,
+    paddingHorizontal: 4
+  },
+  submitHintText: {
+    flex: 1,
+    fontSize: 11.5,
+    color: '#64748b',
+    lineHeight: 16
   },
 
   // TAB 2: RIWAYAT STYLES
@@ -2700,6 +3128,74 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#991b1b',
     lineHeight: 16
+  },
+  historyDraftActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12
+  },
+  btnDraftActionEdit: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0284c7',
+    borderRadius: 8,
+    paddingVertical: 9
+  },
+  btnDraftActionEditText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#ffffff'
+  },
+  btnDraftActionDelete: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fee2e2',
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9
+  },
+  btnDraftActionDeleteText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#ef4444'
+  },
+  lockedNoticeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginTop: 10
+  },
+  lockedNoticeText: {
+    flex: 1,
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#92400e',
+    lineHeight: 16
+  },
+  btnResubmitFromHistory: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#b45309',
+    borderRadius: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 12
+  },
+  btnResubmitFromHistoryText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#ffffff'
   },
   modalBackdrop: {
     flex: 1,
