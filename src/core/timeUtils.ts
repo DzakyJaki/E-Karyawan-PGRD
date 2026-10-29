@@ -79,8 +79,8 @@ export function getEffectiveScheduleForToday(workTimeData: any, targetDate: Date
 
   const isEffectiveClosedToday = isClosedToday || isRestToday;
 
-  const rawStartTime = daySchedule?.work_start_time || workTimeData.work_start_time || '08:00';
-  const rawEndTime = daySchedule?.work_end_time || workTimeData.work_end_time || '17:00';
+  const rawStartTime = daySchedule?.work_start_time || workTimeData.work_start_time || '00:00';
+  const rawEndTime = daySchedule?.work_end_time || workTimeData.work_end_time || '00:00';
   const normalizedEndTime = normalizeTimeString(rawEndTime, rawStartTime);
 
   // Deteksi Istirahat Serentak (misal hari Jumat Sholat Jumat 11:30 - 13:30)
@@ -246,5 +246,264 @@ export function calculateBreakLateDetails(
     actualDurationMinutes: actualDuration > 0 ? actualDuration : 0,
     allowedDurationMinutes: allowedDuration
   };
+}
+
+/**
+ * Nama-nama bulan dalam bahasa Indonesia
+ */
+export const MONTH_NAMES_INDONESIA = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+
+/**
+ * Nama-nama hari dalam bahasa Indonesia (0 = Minggu ... 6 = Sabtu)
+ */
+export const DAY_NAMES_INDONESIA = [
+  'Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'
+];
+
+/**
+ * Mendapatkan timezone perangkat secara otomatis (default fallback: 'Asia/Jakarta' untuk WIB)
+ */
+export function getDeviceTimeZone(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) return tz;
+  } catch {}
+  return 'Asia/Jakarta';
+}
+
+/**
+ * Menentukan singkatan zona waktu Indonesia secara otomatis (WIB, WITA, WIT)
+ * berdasarkan timezone yang terdeteksi dari perangkat / Asia/Jakarta.
+ */
+export function getTimeZoneAbbrev(date: Date = new Date(), timeZone?: string): string {
+  const tz = (timeZone || getDeviceTimeZone()).toLowerCase();
+  if (tz.includes('jakarta') || tz.includes('pontianak') || tz.includes('bangkok') || tz.includes('saigon')) {
+    return 'WIB';
+  }
+  if (tz.includes('makassar') || tz.includes('ujung_pandang') || tz.includes('bali') || tz.includes('singapore') || tz.includes('kuala_lumpur')) {
+    return 'WITA';
+  }
+  if (tz.includes('jayapura')) {
+    return 'WIT';
+  }
+
+  try {
+    const targetTz = timeZone || getDeviceTimeZone();
+    const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
+    const tzDate = new Date(date.toLocaleString('en-US', { timeZone: targetTz }));
+    const diffMinutes = Math.round((tzDate.getTime() - utcDate.getTime()) / 60000);
+    if (diffMinutes === 420) return 'WIB';   // UTC+7
+    if (diffMinutes === 480) return 'WITA';  // UTC+8
+    if (diffMinutes === 540) return 'WIT';   // UTC+9
+  } catch {
+    const offsetMin = -date.getTimezoneOffset();
+    if (offsetMin === 420) return 'WIB';
+    if (offsetMin === 480) return 'WITA';
+    if (offsetMin === 540) return 'WIT';
+  }
+
+  return 'WIB';
+}
+
+/**
+ * Parsing data tanggal dan waktu dari string server ke zona waktu Asia/Jakarta.
+ * Mengantisipasi format ISO UTC (2026-10-29T01:25:55.000000Z),
+ * format MySQL tanpa offset (2026-10-29 08:25:55),
+ * maupun format tanggal saja (2026-10-29).
+ */
+export function parseDateAsiaJakarta(input?: string | Date | null): Date | null {
+  if (!input) return null;
+  if (input instanceof Date) return isNaN(input.getTime()) ? null : input;
+
+  const s = String(input).trim();
+  if (!s) return null;
+
+  // Format YYYY-MM-DD (tanggal kalender saja)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+
+  // Format ISO dengan timezone eksplisit (Z atau offset +07:00 / -05:00)
+  if (/T.*\d(Z|[+-]\d{2}:?\d{2})$/.test(s)) {
+    const parsed = new Date(s);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  // Format YYYY-MM-DD HH:mm:ss atau YYYY-MM-DDTHH:mm:ss tanpa timezone
+  // Dianggap sebagai data waktu Asia/Jakarta (+07:00) dari backend
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?/.test(s)) {
+    const iso = s.replace(' ', 'T');
+    if (!iso.includes('+') && !iso.includes('Z')) {
+      const parts = iso.split('T');
+      const timeParts = parts[1].split(':');
+      const sec = timeParts[2] ? timeParts[2].split('.')[0] : '00';
+      const cleanIso = `${parts[0]}T${timeParts[0]}:${timeParts[1]}:${sec}+07:00`;
+      const parsed = new Date(cleanIso);
+      if (!isNaN(parsed.getTime())) return parsed;
+    } else {
+      const parsed = new Date(iso);
+      if (!isNaN(parsed.getTime())) return parsed;
+    }
+  }
+
+  const fallback = new Date(s);
+  return isNaN(fallback.getTime()) ? null : fallback;
+}
+
+/**
+ * Format tanggal ke bahasa Indonesia (Hari, Tanggal Bulan Tahun)
+ * Contoh: "Kamis, 29 Oktober 2026" atau "Kamis, 29 Okt 2026"
+ */
+export function formatDateIndo(
+  dateInput?: string | Date | null,
+  shortMonth: boolean = false,
+  includeDayName: boolean = true
+): string {
+  if (!dateInput) return '--';
+
+  // Jika formatnya murni YYYY-MM-DD
+  if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput.trim())) {
+    const [y, m, d] = dateInput.trim().split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    const dayName = DAY_NAMES_INDONESIA[dateObj.getDay()] || '';
+    const rawMonth = MONTH_NAMES_INDONESIA[m - 1] || String(m);
+    const monthName = shortMonth ? rawMonth.substring(0, 3) : rawMonth;
+    return includeDayName && dayName
+      ? `${dayName}, ${d} ${monthName} ${y}`
+      : `${d} ${monthName} ${y}`;
+  }
+
+  const dateObj = parseDateAsiaJakarta(dateInput);
+  if (!dateObj) return typeof dateInput === 'string' ? dateInput : '--';
+
+  const tz = getDeviceTimeZone();
+  try {
+    const formatter = new Intl.DateTimeFormat('id-ID', {
+      timeZone: tz,
+      weekday: includeDayName ? 'long' : undefined,
+      year: 'numeric',
+      month: shortMonth ? 'short' : 'long',
+      day: 'numeric'
+    });
+    return formatter.format(dateObj);
+  } catch {
+    const dayName = DAY_NAMES_INDONESIA[dateObj.getDay()] || '';
+    const d = dateObj.getDate();
+    const m = dateObj.getMonth();
+    const y = dateObj.getFullYear();
+    const rawMonth = MONTH_NAMES_INDONESIA[m] || '';
+    const monthName = shortMonth ? rawMonth.substring(0, 3) : rawMonth;
+    return includeDayName && dayName
+      ? `${dayName}, ${d} ${monthName} ${y}`
+      : `${d} ${monthName} ${y}`;
+  }
+}
+
+/**
+ * Format tanggal dan waktu ke bahasa Indonesia dengan zona waktu otomatis
+ * Contoh: "29 Okt 2026, 08:25 WIB" atau "Kamis, 29 Oktober 2026 • 08:25 WIB"
+ */
+export function formatDateTimeIndo(
+  dateTimeInput?: string | Date | null,
+  options?: {
+    shortMonth?: boolean;
+    includeDayName?: boolean;
+    separator?: string;
+  }
+): string {
+  if (!dateTimeInput) return '--';
+
+  const dateObj = parseDateAsiaJakarta(dateTimeInput);
+  if (!dateObj) return typeof dateTimeInput === 'string' ? dateTimeInput : '--';
+
+  const shortMonth = options?.shortMonth ?? true;
+  const includeDayName = options?.includeDayName ?? false;
+  const separator = options?.separator ?? ', ';
+
+  const tz = getDeviceTimeZone();
+  const tzAbbrev = getTimeZoneAbbrev(dateObj, tz);
+
+  try {
+    const formatter = new Intl.DateTimeFormat('id-ID', {
+      timeZone: tz,
+      weekday: 'long',
+      year: 'numeric',
+      month: shortMonth ? 'short' : 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+
+    const parts = formatter.formatToParts(dateObj);
+    const getVal = (type: string) => parts.find(p => p.type === type)?.value || '';
+
+    const dayName = getVal('weekday');
+    const day = getVal('day');
+    const month = getVal('month');
+    const year = getVal('year');
+    const hour = getVal('hour');
+    const minute = getVal('minute');
+
+    const dateStr = includeDayName && dayName
+      ? `${dayName}, ${day} ${month} ${year}`
+      : `${day} ${month} ${year}`;
+    const timeStr = `${hour}:${minute} ${tzAbbrev}`;
+
+    return `${dateStr}${separator}${timeStr}`;
+  } catch {
+    const d = dateObj.getDate();
+    const m = dateObj.getMonth();
+    const y = dateObj.getFullYear();
+    const rawMonth = MONTH_NAMES_INDONESIA[m] || '';
+    const monthName = shortMonth ? rawMonth.substring(0, 3) : rawMonth;
+    const h = String(dateObj.getHours()).padStart(2, '0');
+    const min = String(dateObj.getMinutes()).padStart(2, '0');
+    const dayName = DAY_NAMES_INDONESIA[dateObj.getDay()] || '';
+
+    const dateStr = includeDayName && dayName
+      ? `${dayName}, ${d} ${monthName} ${y}`
+      : `${d} ${monthName} ${y}`;
+    return `${dateStr}${separator}${h}:${min} ${tzAbbrev}`;
+  }
+}
+
+/**
+ * Format waktu saja ke format 24 jam dengan zona waktu otomatis
+ * Contoh: "08:25 WIB"
+ */
+export function formatTimeIndo(timeInput?: string | Date | null): string {
+  if (!timeInput) return '--:--';
+  const tzAbbrev = getTimeZoneAbbrev();
+
+  if (typeof timeInput === 'string') {
+    const clean = timeInput.trim();
+    // Jika format HH:mm atau HH:mm:ss
+    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(clean)) {
+      return `${clean.substring(0, 5)} ${tzAbbrev}`;
+    }
+  }
+
+  const dateObj = parseDateAsiaJakarta(timeInput);
+  if (!dateObj) return typeof timeInput === 'string' ? timeInput : '--:--';
+
+  const tz = getDeviceTimeZone();
+  try {
+    const formatter = new Intl.DateTimeFormat('id-ID', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    return `${formatter.format(dateObj)} ${tzAbbrev}`;
+  } catch {
+    const h = String(dateObj.getHours()).padStart(2, '0');
+    const min = String(dateObj.getMinutes()).padStart(2, '0');
+    return `${h}:${min} ${tzAbbrev}`;
+  }
 }
 

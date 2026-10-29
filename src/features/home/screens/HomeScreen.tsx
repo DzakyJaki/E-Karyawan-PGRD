@@ -18,7 +18,8 @@ import {
   calculateBreakDeadline, 
   calculateBreakLateDetails, 
   getEffectiveScheduleForToday, 
-  normalizeTimeString 
+  normalizeTimeString,
+  getTimeZoneAbbrev
 } from '../../../core/timeUtils';
 
 const { width } = Dimensions.get('window');
@@ -226,14 +227,15 @@ export function HomeScreen() {
 
   const todayDayName = effectiveWork?.day_name || new Date().toLocaleDateString('id-ID', { weekday: 'long' });
   const isWorkClosedToday = Boolean(effectiveWork?.is_closed_today);
-  const workStartTime = effectiveWork?.work_start_time ? effectiveWork.work_start_time.substring(0, 5) : '08:00';
+  const workStartTime = effectiveWork?.work_start_time ? effectiveWork.work_start_time.substring(0, 5) : '00:00';
   const workEndTime = effectiveWork?.work_end_time
     ? normalizeTimeString(effectiveWork.work_end_time, effectiveWork.work_start_time)
-    : '17:00';
+    : '00:00';
 
+  const tzAbbrev = getTimeZoneAbbrev();
   const todayScheduleText = isWorkClosedToday
     ? `${todayDayName} • Libur / Tutup`
-    : `${todayDayName} • ${workStartTime} - ${workEndTime} WIB`;
+    : `${todayDayName} • ${workStartTime} - ${workEndTime} ${tzAbbrev}`;
 
   const isTodayEarlyLeave = useMemo(() => {
     if (!todayAttendance?.clock_out) return false;
@@ -289,27 +291,27 @@ export function HomeScreen() {
       const start = effectiveWork?.break_start_time ? effectiveWork.break_start_time.substring(0, 5) : '--:--';
       const end = effectiveWork?.break_end_time ? effectiveWork.break_end_time.substring(0, 5) : '--:--';
       if (effectiveWork?.break_shift_name) {
-        return `${effectiveWork.break_shift_name} (${start} - ${end} WIB)`;
+        return `${effectiveWork.break_shift_name} (${start} - ${end} ${tzAbbrev})`;
       }
-      return `${start} - ${end} WIB`;
+      return `${start} - ${end} ${tzAbbrev}`;
     }
 
     // 2. Tipe Kantor (Jam Mulai kantor_break_from s/d batas kantor_break_until & DURASI kantor_break_duration)
     if (effectiveWork?.break_type === 'kantor' || effectiveWork?.kantor_break_until || effectiveWork?.kantor_break_from) {
       const from = effectiveWork?.kantor_break_from
         ? effectiveWork.kantor_break_from.substring(0, 5)
-        : '12:00';
+        : '00:00';
       const until = effectiveWork?.kantor_break_until
         ? effectiveWork.kantor_break_until.substring(0, 5)
-        : '15:00';
-      const duration = Number(effectiveWork?.kantor_break_duration) || 60;
-      return `${from} - ${until} WIB (Maks. ${duration} Menit)`;
+        : '00:00';
+      const duration = Number(effectiveWork?.kantor_break_duration) || 0;
+      return `${from} - ${until} ${tzAbbrev}${duration > 0 ? ` (Maks. ${duration} Menit)` : ''}`;
     }
 
     if (effectiveWork?.break_end_time) {
-      return `Maksimal s/d ${effectiveWork.break_end_time.substring(0, 5)} WIB`;
+      return `Maksimal s/d ${effectiveWork.break_end_time.substring(0, 5)} ${tzAbbrev}`;
     }
-  }, [isWorkClosedToday, effectiveWork]);
+  }, [isWorkClosedToday, effectiveWork, tzAbbrev]);
 
   const todayBreakLate = useMemo(() => {
     if (!todayAttendance?.break_end) return null;
@@ -386,12 +388,12 @@ export function HomeScreen() {
 
     // 2. Skenario Kantor
     if (effectiveWork.break_type === 'kantor' || effectiveWork.kantor_break_until) {
-      const duration = Number(effectiveWork.kantor_break_duration) || 60;
+      const duration = Number(effectiveWork.kantor_break_duration) || 0;
 
       // Jika karyawan sedang istirahat, pantau durasi maksimal istirahat (kantor_break_duration)
-      if (todayAttendance?.break_start && !todayAttendance?.break_end) {
+      if (todayAttendance?.break_start && !todayAttendance?.break_end && duration > 0) {
         const deadlineStr = calculateBreakDeadline(todayAttendance.break_start, duration, effectiveWork.kantor_break_until);
-        const [deadH, deadM] = (deadlineStr || '15:00').split(':').map(Number);
+        const [deadH, deadM] = (deadlineStr || effectiveWork.kantor_break_until?.substring(0, 5) || '00:00').split(':').map(Number);
         if (!isNaN(deadH) && !isNaN(deadM)) {
           const dDead = new Date(now);
           dDead.setHours(deadH, deadM, 0, 0);
@@ -418,29 +420,31 @@ export function HomeScreen() {
         }
       }
 
-      const untilParts = (effectiveWork.kantor_break_until || '15:00').split(':');
-      if (untilParts.length >= 2) {
-        const dLimit = new Date(now);
-        dLimit.setHours(parseInt(untilParts[0], 10), parseInt(untilParts[1], 10), 0, 0);
-        const diffMinutes = Math.round((dLimit.getTime() - nowMs) / 60000);
+      if (effectiveWork.kantor_break_until) {
+        const untilParts = effectiveWork.kantor_break_until.substring(0, 5).split(':');
+        if (untilParts.length >= 2) {
+          const dLimit = new Date(now);
+          dLimit.setHours(parseInt(untilParts[0], 10), parseInt(untilParts[1], 10), 0, 0);
+          const diffMinutes = Math.round((dLimit.getTime() - nowMs) / 60000);
 
-        if (diffMinutes > 0 && diffMinutes <= 5) {
-          return {
-            title: `Batas Istirahat Kantor ${diffMinutes} Menit Lagi`,
-            message: `Batas istirahat kantor pukul ${untilParts[0]}:${untilParts[1]} WIB. Pastikan Anda telah menyelesaikan rehat.`,
-            color: '#d97706',
-            bgColor: '#fffbeb',
-            borderColor: '#fde68a'
-          };
-        }
-        if (diffMinutes <= 0 && diffMinutes >= -5) {
-          return {
-            title: 'Batas Istirahat Kantor Telah Lewat',
-            message: `Batas jam istirahat kantor telah berakhir. Pastikan Anda telah berada di tempat kerja.`,
-            color: '#dc2626',
-            bgColor: '#fef2f2',
-            borderColor: '#fecaca'
-          };
+          if (diffMinutes > 0 && diffMinutes <= 5) {
+            return {
+              title: `Batas Istirahat Kantor ${diffMinutes} Menit Lagi`,
+              message: `Batas istirahat kantor pukul ${untilParts[0]}:${untilParts[1]} WIB. Pastikan Anda telah menyelesaikan rehat.`,
+              color: '#d97706',
+              bgColor: '#fffbeb',
+              borderColor: '#fde68a'
+            };
+          }
+          if (diffMinutes <= 0 && diffMinutes >= -5) {
+            return {
+              title: 'Batas Istirahat Kantor Telah Lewat',
+              message: `Batas jam istirahat kantor telah berakhir. Pastikan Anda telah berada di tempat kerja.`,
+              color: '#dc2626',
+              bgColor: '#fef2f2',
+              borderColor: '#fecaca'
+            };
+          }
         }
       }
     }
@@ -566,7 +570,7 @@ export function HomeScreen() {
                 <View style={styles.homeBreakCol}>
                   <Text style={styles.homeBreakColLabel}>Mulai Ist.</Text>
                   <Text style={styles.homeBreakTimeBold}>
-                    {todayAttendance?.break_start ? `${todayAttendance.break_start.substring(0, 5)} WIB` : '--:--'}
+                    {todayAttendance?.break_start ? `${todayAttendance.break_start.substring(0, 5)} ${tzAbbrev}` : '--:--'}
                   </Text>
                 </View>
 
@@ -579,7 +583,7 @@ export function HomeScreen() {
                     styles.homeBreakTimeBold,
                     todayBreakLate?.isLate && { color: '#dc2626' }
                   ]}>
-                    {todayAttendance?.break_end ? `${todayAttendance.break_end.substring(0, 5)} WIB` : '--:--'}
+                    {todayAttendance?.break_end ? `${todayAttendance.break_end.substring(0, 5)} ${tzAbbrev}` : '--:--'}
                   </Text>
                 </View>
               </View>

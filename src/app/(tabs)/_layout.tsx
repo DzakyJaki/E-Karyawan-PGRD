@@ -1,8 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Tabs, router } from 'expo-router';
 import { theme } from '../../core/theme';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, Platform, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -10,6 +10,20 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 8);
   const tabHeight = 60 + (insets.bottom > 0 ? insets.bottom : (Platform.OS === 'android' ? 8 : 4));
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, () => setIsKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setIsKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     const checkToken = async () => {
@@ -24,6 +38,7 @@ export default function TabsLayout() {
   return (
     <Tabs screenOptions={{
       headerShown: true,
+      tabBarHideOnKeyboard: true,
       headerStyle: { 
         backgroundColor: theme.colors.primary,
         elevation: 0,
@@ -36,11 +51,12 @@ export default function TabsLayout() {
       headerTitleStyle: { fontWeight: 'bold' },
       tabBarStyle: {
         backgroundColor: theme.colors.card,
-        borderTopWidth: 1,
+        borderTopWidth: isKeyboardVisible ? 0 : 1,
         borderTopColor: theme.colors.border,
-        height: tabHeight,
-        paddingBottom: bottomPadding,
-        paddingTop: 6,
+        height: isKeyboardVisible ? 0 : tabHeight,
+        paddingBottom: isKeyboardVisible ? 0 : bottomPadding,
+        paddingTop: isKeyboardVisible ? 0 : 6,
+        display: isKeyboardVisible ? 'none' : 'flex',
       },
       tabBarActiveTintColor: theme.colors.primaryLight,
       tabBarInactiveTintColor: theme.colors.textMuted,

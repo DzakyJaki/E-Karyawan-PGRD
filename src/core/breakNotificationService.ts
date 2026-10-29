@@ -535,12 +535,12 @@ async function checkAndTriggerActiveReminders() {
     }
     // --- SKENARIO KANTOR ---
     else if (cachedWorkTimeData.break_type === 'kantor' || cachedWorkTimeData.kantor_break_until) {
-      const untilLabel = cachedWorkTimeData.kantor_break_until?.substring(0, 5) || '15:00';
-      const limitTime = parseTodayTimeString(cachedWorkTimeData.kantor_break_until || '15:00');
-      const durationMin = Number(cachedWorkTimeData.kantor_break_duration) || 60;
+      const untilLabel = cachedWorkTimeData.kantor_break_until?.substring(0, 5) || '00:00';
+      const limitTime = cachedWorkTimeData.kantor_break_until ? parseTodayTimeString(cachedWorkTimeData.kantor_break_until) : null;
+      const durationMin = Number(cachedWorkTimeData.kantor_break_duration) || 0;
 
       // 1. Pengingat durasi maksimal istirahat (kantor_break_duration) jika sedang istirahat
-      if (hasStartedBreak && cachedTodayAttendance?.break_start) {
+      if (hasStartedBreak && cachedTodayAttendance?.break_start && durationMin > 0) {
         const breakStartD = parseTodayTimeString(cachedTodayAttendance.break_start);
         if (breakStartD) {
           const durationTargetTime = new Date(breakStartD.getTime() + durationMin * 60 * 1000);
@@ -761,12 +761,12 @@ export async function scheduleBreakReminders(
         }
       }
     } else if (workTimeData.break_type === 'kantor' || workTimeData.kantor_break_until) {
-      const untilLabel = workTimeData.kantor_break_until?.substring(0, 5) || '15:00';
-      const limitTime = parseTodayTimeString(workTimeData.kantor_break_until || '15:00');
-      const durationMin = Number(workTimeData.kantor_break_duration) || 60;
+      const untilLabel = workTimeData.kantor_break_until?.substring(0, 5) || '00:00';
+      const limitTime = workTimeData.kantor_break_until ? parseTodayTimeString(workTimeData.kantor_break_until) : null;
+      const durationMin = Number(workTimeData.kantor_break_duration) || 0;
 
       // 1. Jadwalkan pengingat durasi istirahat jika sedang istirahat
-      if (hasStartedBreak && todayAttendance?.break_start) {
+      if (hasStartedBreak && todayAttendance?.break_start && durationMin > 0) {
         const breakStartD = parseTodayTimeString(todayAttendance.break_start);
         if (breakStartD) {
           const durationTargetTime = new Date(breakStartD.getTime() + durationMin * 60 * 1000);

@@ -17,6 +17,7 @@
     "android": {
       "package": "com.ekaryawan",
       "versionCode": 1,
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "backgroundColor": "#032a55",
         "foregroundImage": "./assets/images/icon.png"
