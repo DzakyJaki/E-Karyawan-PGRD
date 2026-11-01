@@ -203,6 +203,7 @@ export function ProfileScreen() {
       items: [
         { icon: 'assignment-ind', label: 'Data Karyawan', color: theme.colors.primary, route: '/profile/employee-data' },
         { icon: 'history-toggle-off', label: 'Form Pengajuan Presensi', color: '#ea580c', route: '/profile/late-explanation' },
+        { icon: 'account-balance-wallet', label: 'Kasbon & Pinjaman', color: '#059669', route: '/profile/kasbon' },
       ]
     },
     {

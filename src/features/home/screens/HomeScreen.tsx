@@ -688,6 +688,7 @@ export function HomeScreen() {
             <MenuButton icon="assignment-ind" color={theme.colors.warning} label="Data Karyawan" route="/profile/employee-data" router={router} />
             <MenuButton icon="payments" color={theme.colors.success} label="Slip Gaji" route="/(tabs)/salary" router={router} />
             <MenuButton icon="history" color={theme.colors.secondary} label="Riwayat Absen" route="/(tabs)/attendance" router={router} />
+            <MenuButton icon="account-balance-wallet" color="#059669" label="Kasbon" route="/profile/kasbon" router={router} />
           </View>
         </View>
 
@@ -990,7 +991,7 @@ const styles = StyleSheet.create({
   section: { paddingHorizontal: theme.spacing.l, marginTop: theme.spacing.xl },
   sectionTitle: { fontSize: 17, fontWeight: 'bold', color: theme.colors.text, marginBottom: theme.spacing.m },
 
-  menuGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  menuGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start' },
   menuButton: { width: (width - 48) / 4, alignItems: 'center', marginBottom: theme.spacing.m },
   menuIconCircle: { width: 54, height: 54, borderRadius: 27, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   menuLabel: { fontSize: 12, color: theme.colors.text, textAlign: 'center', fontWeight: '500' },

@@ -994,6 +994,24 @@ export default function SalaryScreen() {
               
             </View>
 
+            {/* Quick Kasbon Link */}
+            <TouchableOpacity 
+              style={styles.btnKasbonLink} 
+              activeOpacity={0.8}
+              onPress={() => router.push('/profile/kasbon')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={styles.kasbonIconWrap}>
+                  <MaterialIcons name="account-balance-wallet" size={20} color="#059669" />
+                </View>
+                <View>
+                  <Text style={styles.kasbonLinkTitle}>Pinjaman Kasbon Karyawan</Text>
+                  <Text style={styles.kasbonLinkSub}>Ajukan atau pantau sisa angsuran kasbon</Text>
+                </View>
+              </View>
+              <MaterialIcons name="chevron-right" size={22} color="#059669" />
+            </TouchableOpacity>
+
             {/* Download Button */}
             <TouchableOpacity 
               style={[styles.btnDownload, generatingPdf && { opacity: 0.7 }]} 
@@ -1143,6 +1161,38 @@ const styles = StyleSheet.create({
   subtotalRow: { borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 12, marginTop: 4, marginBottom: 0 },
   subtotalLabel: { fontSize: 14, fontWeight: 'bold', color: theme.colors.text },
   subtotalValue: { fontSize: 14, fontWeight: 'bold' },
+  
+  btnKasbonLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ECFDF5',
+    marginHorizontal: theme.spacing.m,
+    marginTop: theme.spacing.m,
+    padding: 14,
+    borderRadius: theme.radius.m,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  kasbonIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#D1FAE5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  kasbonLinkTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#065F46',
+  },
+  kasbonLinkSub: {
+    fontSize: 11,
+    color: '#047857',
+    marginTop: 2,
+  },
   
   btnDownload: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#10b981', marginHorizontal: theme.spacing.m, marginTop: theme.spacing.s, padding: theme.spacing.l, borderRadius: theme.radius.m, elevation: 2 },
   btnDownloadText: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginLeft: 8 },

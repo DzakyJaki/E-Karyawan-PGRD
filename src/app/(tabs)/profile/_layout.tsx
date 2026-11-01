@@ -33,6 +33,12 @@ export default function ProfileLayout() {
         }}
       />
       <Stack.Screen
+        name="kasbon"
+        options={{
+          title: 'Kasbon Karyawan',
+        }}
+      />
+      <Stack.Screen
         name="salary"
         options={{
           title: 'Slip Gaji',
