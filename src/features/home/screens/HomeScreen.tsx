@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleBreakReminders } from '../../../core/breakNotificationService';
 import { theme } from '../../../core/theme';
+import { useToast } from '../../../core/ToastContext';
 import { 
   calculateBreakDeadline, 
   calculateBreakLateDetails, 
@@ -44,6 +45,15 @@ interface TodayAttendance {
 export function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { showToast } = useToast();
+
+  const handleComingSoon = useCallback((featureName: string) => {
+    showToast({
+      title: 'Segera Hadir (Coming Soon)',
+      message: `Fitur ${featureName} sedang dalam tahap pengembangan dan akan segera dirilis.`,
+      type: 'info',
+    });
+  }, [showToast]);
 
   const [refreshing, setRefreshing] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
@@ -690,6 +700,13 @@ export function HomeScreen() {
             <MenuButton icon="history" color={theme.colors.secondary} label="Riwayat Absen" route="/(tabs)/attendance" router={router} />
             <MenuButton icon="account-balance-wallet" color="#059669" label="Kasbon" route="/profile/kasbon" router={router} />
             <MenuButton icon="history-toggle-off" color="#ea580c" label="Pengajuan Presensi" route="/profile/late-explanation" router={router} />
+            <MenuButton
+              icon="assignment"
+              color="#0284c7"
+              label="Rencana & Realisasi"
+              isComingSoon={true}
+              onPressComingSoon={() => handleComingSoon('Rencana & Realisasi Kerja')}
+            />
           </View>
         </View>
 
@@ -763,12 +780,45 @@ export function HomeScreen() {
   );
 }
 
-const MenuButton = ({ icon, color, label, route, router }: { icon: any, color: string, label: string, route: string, router: any }) => (
-  <TouchableOpacity style={styles.menuButton} onPress={() => router.push(route)} activeOpacity={0.8}>
-    <View style={[styles.menuIconCircle, { backgroundColor: color + '20' }]}>
+const MenuButton = ({
+  icon,
+  color,
+  label,
+  route,
+  router,
+  isComingSoon,
+  onPressComingSoon,
+}: {
+  icon: any;
+  color: string;
+  label: string;
+  route?: string;
+  router?: any;
+  isComingSoon?: boolean;
+  onPressComingSoon?: () => void;
+}) => (
+  <TouchableOpacity
+    style={styles.menuButton}
+    onPress={() => {
+      if (isComingSoon) {
+        onPressComingSoon?.();
+      } else if (route && router) {
+        router.push(route);
+      }
+    }}
+    activeOpacity={0.8}
+  >
+    <View style={styles.menuIconWrapper}>
+      <View style={[styles.menuIconCircle, { backgroundColor: color + '20' }]}>
       <MaterialIcons name={icon} size={28} color={color} />
     </View>
-    <Text style={styles.menuLabel}>{label}</Text>
+      {isComingSoon ? (
+        <View style={styles.comingSoonBadge}>
+          <Text style={styles.comingSoonText}>Soon</Text>
+        </View>
+      ) : null}
+    </View>
+    <Text style={styles.menuLabel} numberOfLines={2}>{label}</Text>
   </TouchableOpacity>
 );
 
@@ -996,6 +1046,19 @@ const styles = StyleSheet.create({
   menuButton: { width: (width - 48) / 4, alignItems: 'center', marginBottom: theme.spacing.m },
   menuIconCircle: { width: 54, height: 54, borderRadius: 27, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   menuLabel: { fontSize: 12, color: theme.colors.text, textAlign: 'center', fontWeight: '500' },
+  menuIconWrapper: { position: 'relative', alignItems: 'center' },
+  comingSoonBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    backgroundColor: '#ea580c',
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+  },
+  comingSoonText: { fontSize: 8.5, fontWeight: 'bold', color: '#ffffff' },
 
   combinedCard: {
     backgroundColor: '#ffffff',
