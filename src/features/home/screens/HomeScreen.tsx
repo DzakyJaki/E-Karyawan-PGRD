@@ -707,6 +707,13 @@ export function HomeScreen() {
               isComingSoon={true}
               onPressComingSoon={() => handleComingSoon('Rencana & Realisasi Kerja')}
             />
+            <MenuButton
+              icon="insights"
+              color="#8b5cf6"
+              label="Hasil Evaluasi"
+              isComingSoon={true}
+              onPressComingSoon={() => handleComingSoon('Hasil Evaluasi')}
+            />
           </View>
         </View>
 
