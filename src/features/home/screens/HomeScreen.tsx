@@ -689,6 +689,7 @@ export function HomeScreen() {
             <MenuButton icon="payments" color={theme.colors.success} label="Slip Gaji" route="/(tabs)/salary" router={router} />
             <MenuButton icon="history" color={theme.colors.secondary} label="Riwayat Absen" route="/(tabs)/attendance" router={router} />
             <MenuButton icon="account-balance-wallet" color="#059669" label="Kasbon" route="/profile/kasbon" router={router} />
+            <MenuButton icon="history-toggle-off" color="#ea580c" label="Pengajuan Presensi" route="/profile/late-explanation" router={router} />
           </View>
         </View>
 
