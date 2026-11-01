@@ -73,6 +73,15 @@ const TUTORIAL_TOPICS: TutorialTopic[] = [
     guideText: `💵 PANDUAN SLIP GAJI BULANAN:\n\n1️⃣ Masuk ke tab "Slip Gaji" pada menu navigasi bawah.\n2️⃣ Masukkan 6 digit PIN Keamanan Anda untuk otentikasi data finansial.\n3️⃣ Pilih periode bulan & tahun yang ingin dilihat.\n4️⃣ Anda dapat melihat rincian gaji pokok, tunjangan, dan potongan resmi.\n5️⃣ Tekan tombol "Cetak PDF" jika Anda membutuhkan dokumen cetak slip gaji.`
   },
   {
+    id: 'kasbon',
+    icon: 'account-balance-wallet',
+    title: 'Pinjaman Kasbon Karyawan',
+    shortDesc: 'Syarat lunas, alur verifikasi akuntansi & tenor',
+    route: '/(tabs)/profile/kasbon',
+    routeLabel: 'Buka Halaman Kasbon',
+    guideText: `💰 PANDUAN PENGAJUAN & PENGELOLAAN KASBON:\n\n1️⃣ Syarat Pengajuan Kasbon:\n   • Pengajuan kasbon baru hanya dapat dilakukan jika kasbon sebelumnya telah LUNAS.\n   • Jika masih memiliki sisa saldo tagihan atau pengajuan yang sedang diproses (pending), form pengajuan otomatis terkunci oleh sistem.\n\n2️⃣ Cara Mengajukan Kasbon:\n   • Buka menu "Kasbon" dari Beranda (Menu Cepat), Tab Slip Gaji, atau Profil > Administrasi.\n   • Tekan tombol "Ajukan Kasbon Baru".\n   • Masukkan nominal pinjaman (tersedia tombol cepat +500rb, +1jt, +2jt, +5jt).\n   • Tentukan pilihan tenor angsuran (1 s/d 12 Bulan).\n   • Tuliskan alasan/keperluan mendesak pengajuan.\n\n3️⃣ Penetapan Potongan Bulanan:\n   • Besaran potongan per bulan (monthly deduction) dan jadwal pemotongan payroll ditentukan & diinput langsung oleh staf Akuntansi/HRD melalui sistem web master potongan (deduction_types).\n\n4️⃣ Alur & Timeline Kasbon:\n   • Diajukan ➔ Review Akuntansi ➔ Potong Gaji (Aktif) ➔ Lunas.\n   • Pada kartu kasbon, Anda dapat memantau persentase cicilan, sisa tagihan, dan tracker angsuran bulanan.\n\n5️⃣ Pembatalan Pengajuan:\n   • Selama pengajuan masih berstatus "Menunggu Review" (Pending), Anda dapat membatalkannya secara mandiri melalui tombol "Batalkan".`
+  },
+  {
     id: 'profil',
     icon: 'assignment-ind',
     title: 'Data Diri & Kepegawaian',
