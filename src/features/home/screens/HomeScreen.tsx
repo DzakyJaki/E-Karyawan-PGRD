@@ -14,14 +14,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleBreakReminders } from '../../../core/breakNotificationService';
 import { theme } from '../../../core/theme';
-import { useToast } from '../../../core/ToastContext';
-import { 
-  calculateBreakDeadline, 
-  calculateBreakLateDetails, 
-  getEffectiveScheduleForToday, 
-  normalizeTimeString,
-  getTimeZoneAbbrev
+import {
+  calculateBreakDeadline,
+  calculateBreakLateDetails,
+  getEffectiveScheduleForToday,
+  getTimeZoneAbbrev,
+  normalizeTimeString
 } from '../../../core/timeUtils';
+import { useToast } from '../../../core/ToastContext';
 
 const { width } = Dimensions.get('window');
 
@@ -697,7 +697,7 @@ export function HomeScreen() {
             {/* <MenuButton icon="schedule" color={theme.colors.warning} label="Form Lembur" route="/(tabs)/overtime" router={router} /> */}
             <MenuButton icon="assignment-ind" color={theme.colors.warning} label="Data Karyawan" route="/profile/employee-data" router={router} />
             <MenuButton icon="payments" color={theme.colors.success} label="Slip Gaji" route="/(tabs)/salary" router={router} />
-            <MenuButton icon="history" color={theme.colors.secondary} label="Riwayat Absen" route="/(tabs)/attendance" router={router} />
+            <MenuButton icon="history" color={theme.colors.secondary} label="Riwayat Presensi" route="/(tabs)/attendance" router={router} />
             <MenuButton icon="account-balance-wallet" color="#059669" label="Kasbon" route="/profile/kasbon" router={router} />
             <MenuButton icon="history-toggle-off" color="#ea580c" label="Pengajuan Presensi" route="/profile/late-explanation" router={router} />
             <MenuButton
@@ -711,8 +711,8 @@ export function HomeScreen() {
               icon="insights"
               color="#8b5cf6"
               label="Hasil Evaluasi"
-              isComingSoon={true}
-              onPressComingSoon={() => handleComingSoon('Hasil Evaluasi')}
+              route="/profile/evaluasi"
+              router={router}
             />
           </View>
         </View>
@@ -817,8 +817,8 @@ const MenuButton = ({
   >
     <View style={styles.menuIconWrapper}>
       <View style={[styles.menuIconCircle, { backgroundColor: color + '20' }]}>
-      <MaterialIcons name={icon} size={28} color={color} />
-    </View>
+        <MaterialIcons name={icon} size={28} color={color} />
+      </View>
       {isComingSoon ? (
         <View style={styles.comingSoonBadge}>
           <Text style={styles.comingSoonText}>Soon</Text>

@@ -39,6 +39,12 @@ export default function ProfileLayout() {
         }}
       />
       <Stack.Screen
+        name="evaluasi"
+        options={{
+          title: 'Hasil Evaluasi Kedisiplinan',
+        }}
+      />
+      <Stack.Screen
         name="salary"
         options={{
           title: 'Slip Gaji',

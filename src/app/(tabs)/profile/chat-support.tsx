@@ -82,6 +82,15 @@ const TUTORIAL_TOPICS: TutorialTopic[] = [
     guideText: `💰 PANDUAN PENGAJUAN & PENGELOLAAN KASBON:\n\n1️⃣ Syarat Pengajuan Kasbon:\n   • Pengajuan kasbon baru hanya dapat dilakukan jika kasbon sebelumnya telah LUNAS.\n   • Jika masih memiliki sisa saldo tagihan atau pengajuan yang sedang diproses (pending), form pengajuan otomatis terkunci oleh sistem.\n\n2️⃣ Cara Mengajukan Kasbon:\n   • Buka menu "Kasbon" dari Beranda (Menu Cepat), Tab Slip Gaji, atau Profil > Administrasi.\n   • Tekan tombol "Ajukan Kasbon Baru".\n   • Masukkan nominal pinjaman (tersedia tombol cepat +500rb, +1jt, +2jt, +5jt).\n   • Tentukan pilihan tenor angsuran (1 s/d 12 Bulan).\n   • Tuliskan alasan/keperluan mendesak pengajuan.\n\n3️⃣ Penetapan Potongan Bulanan:\n   • Besaran potongan per bulan (monthly deduction) dan jadwal pemotongan payroll ditentukan & diinput langsung oleh staf Akuntansi/HRD melalui sistem web master potongan (deduction_types).\n\n4️⃣ Alur & Timeline Kasbon:\n   • Diajukan ➔ Review Akuntansi ➔ Potong Gaji (Aktif) ➔ Lunas.\n   • Pada kartu kasbon, Anda dapat memantau persentase cicilan, sisa tagihan, dan tracker angsuran bulanan.\n\n5️⃣ Pembatalan Pengajuan:\n   • Selama pengajuan masih berstatus "Menunggu Review" (Pending), Anda dapat membatalkannya secara mandiri melalui tombol "Batalkan".`
   },
   {
+    id: 'evaluasi',
+    icon: 'insights',
+    title: 'Hasil Evaluasi Kedisiplinan',
+    shortDesc: 'Rapor skor kehadiran, predikat tahunan & catatan owner',
+    route: '/(tabs)/profile/evaluasi',
+    routeLabel: 'Buka Halaman Hasil Evaluasi',
+    guideText: `📊 PANDUAN HASIL EVALUASI KEDISIPLINAN:\n\n1️⃣ Akses Menu Evaluasi:\n   • Buka menu "Hasil Evaluasi" dari Menu Cepat Beranda atau melalui Profil > Administrasi.\n\n2️⃣ Komponen Penilaian:\n   • Skor Evaluasi dihitung berdasarkan konsistensi kehadiran harian serta rekam jejak tata tertib (keterlambatan, pulang lebih awal, kepatuhan istirahat, dan kelengkapan presensi checkout).\n\n3️⃣ Predikat Kedisiplinan:\n   • Sangat Disiplin (Skor ≥ 90)\n   • Disiplin (Skor 80 - 89.9)\n   • Cukup Disiplin (Skor 70 - 79.9)\n   • Kurang Disiplin (Skor 50 - 69.9)\n   • Tidak Disiplin (Skor < 50)\n\n4️⃣ Pengesahan Resmi Owner:\n   • Setiap evaluasi bulanan yang disahkan langsung oleh Owner PT. Pagaruyung dilengkapi catatan persetujuan resmi dan tanggal verifikasi.\n\n5️⃣ Tab Rekap 12 Bulan & Tim Cabang:\n   • Gunakan tab "Rekap 12 Bulan" untuk melihat tren kedisiplinan sepanjang tahun.\n   • Tab "Tim Cabang" menampilkan peringkat kedisiplinan seluruh rekan kerja satu cabang.`
+  },
+  {
     id: 'profil',
     icon: 'assignment-ind',
     title: 'Data Diri & Kepegawaian',
