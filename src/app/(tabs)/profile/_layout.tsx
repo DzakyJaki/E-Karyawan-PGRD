@@ -36,12 +36,14 @@ export default function ProfileLayout() {
         name="kasbon"
         options={{
           title: 'Kasbon Karyawan',
+          headerShown: false,
         }}
       />
       <Stack.Screen
         name="evaluasi"
         options={{
-          title: 'Hasil Evaluasi Kedisiplinan',
+          title: 'Penilaian Kinerja',
+          headerShown: false,
         }}
       />
       <Stack.Screen

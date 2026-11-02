@@ -1,24 +1,28 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
   ActivityIndicator,
-  Modal,
-  TextInput,
-  Platform,
+  Dimensions,
   KeyboardAvoidingView,
+  Modal,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useConfirm } from '../../../core/ConfirmContext';
 import { theme } from '../../../core/theme';
 import { useToast } from '../../../core/ToastContext';
-import { useConfirm } from '../../../core/ConfirmContext';
 import { kasbonService } from '../services/kasbonService';
-import { KasbonSummary, KasbonItem } from '../types';
+import { KasbonItem, KasbonPayment, KasbonSummary } from '../types';
+
+const { width } = Dimensions.get('window');
 
 function formatRupiah(amount: number | string | undefined | null): string {
   if (amount === undefined || amount === null || isNaN(Number(amount))) return 'Rp 0';
@@ -47,6 +51,7 @@ const QUICK_AMOUNTS = [500000, 1000000, 2000000, 3000000, 5000000];
 type FilterTab = 'all' | 'pending' | 'active' | 'completed' | 'rejected';
 
 export default function KasbonScreen() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { showConfirm } = useConfirm();
@@ -158,7 +163,6 @@ export default function KasbonScreen() {
         setKasbonList(listRes.value);
       }
     } catch (err: any) {
-      console.log('Error loading kasbon data:', err);
       showToast({
         title: 'Gagal Memuat Data',
         message: err.message || 'Terjadi kesalahan saat memuat data kasbon.',
@@ -186,7 +190,7 @@ export default function KasbonScreen() {
       const detail = await kasbonService.getDetail(item.id);
       setSelectedKasbon(detail);
     } catch {
-      // Use existing item data as fallback
+      // Fallback
     } finally {
       setDetailLoading(false);
     }
@@ -224,34 +228,42 @@ export default function KasbonScreen() {
     });
   };
 
-  // Klik Tombol Ajukan Kasbon Baru
+  // Handle Open Create Form
   const handlePressApplyKasbon = () => {
     if (hasActiveDebt) {
       showToast({
         title: 'Pengajuan Terkunci',
-        message: 'Kasbon hanya dapat diajukan setelah kasbon sebelumnya lunas.',
+        message: 'Pengajuan kasbon baru hanya dapat dilakukan jika pinjaman kasbon sebelumnya telah LUNAS.',
         type: 'warning',
       });
       return;
     }
+    setFormAmountStr('');
+    setFormTenor(4);
+    setFormNotes('');
     setShowFormModal(true);
   };
 
-  // Handle Form Submit (monthly_deduction set 0 sesuai instruksi, ditentukan oleh akuntansi via web)
+  // Quick Amount Select
+  const handleSelectQuickAmount = (val: number) => {
+    setFormAmountStr(val.toLocaleString('id-ID'));
+  };
+
+  // Submit Form
   const handleSubmitForm = async () => {
-    if (hasActiveDebt) {
+    if (numericAmount <= 0) {
       showToast({
-        title: 'Pengajuan Ditolak',
-        message: 'Anda masih memiliki tagihan kasbon aktif yang belum lunas.',
+        title: 'Nominal Tidak Valid',
+        message: 'Silakan masukkan nominal kasbon yang valid.',
         type: 'warning',
       });
       return;
     }
 
-    if (numericAmount <= 0) {
+    if (formTenor <= 0) {
       showToast({
-        title: 'Nominal Tidak Valid',
-        message: 'Silakan masukkan nominal pengajuan kasbon yang valid.',
+        title: 'Tenor Belum Dipilih',
+        message: 'Silakan pilih tenor angsuran pinjaman.',
         type: 'warning',
       });
       return;
@@ -260,95 +272,95 @@ export default function KasbonScreen() {
     if (!formNotes.trim()) {
       showToast({
         title: 'Alasan Wajib Diisi',
-        message: 'Mohon tuliskan keperluan atau alasan pengajuan kasbon.',
+        message: 'Tuliskan alasan atau keperluan mendesak pengajuan kasbon.',
         type: 'warning',
       });
       return;
     }
 
-    showConfirm({
-      title: 'Konfirmasi Pengajuan',
-      message: `Ajukan pinjaman kasbon sebesar ${formatRupiah(numericAmount)} dengan tenor ${formTenor} bulan?\n\n*Catatan: Besaran potongan bulanan akan diverifikasi & ditentukan langsung oleh tim Akuntansi di sistem web.`,
-      confirmText: 'Kirim Sekarang',
-      cancelText: 'Periksa Lagi',
-      type: 'info',
-      onConfirm: async () => {
-        try {
-          setIsSubmitting(true);
-          // monthly_deduction di-set 0 karena ditentukan oleh pihak akuntansi di web
-          await kasbonService.createKasbon({
-            amount: numericAmount,
-            installment_count: formTenor,
-            monthly_deduction: 0,
-            notes: formNotes.trim(),
-          });
+    try {
+      setIsSubmitting(true);
+      await kasbonService.createKasbon({
+        amount: numericAmount,
+        installment_count: formTenor,
+        notes: formNotes.trim(),
+      });
 
-          showToast({
-            title: 'Pengajuan Terkirim',
-            message: 'Pengajuan kasbon berhasil dikirim. Menunggu penetapan potongan oleh Akuntansi.',
-            type: 'success',
-          });
+      showToast({
+        title: 'Pengajuan Berhasil Dikirim',
+        message: 'Kasbon Anda telah terdaftar dan menunggu verifikasi bagian Akuntansi.',
+        type: 'success',
+      });
 
-          setShowFormModal(false);
-          setFormAmountStr('');
-          setFormNotes('');
-          setFormTenor(4);
-          loadData(true);
-        } catch (err: any) {
-          showToast({
-            title: 'Gagal Mengajukan',
-            message: err.message || 'Terjadi kesalahan saat mengirim pengajuan.',
-            type: 'error',
-          });
-        } finally {
-          setIsSubmitting(false);
-        }
-      },
-    });
-  };
-
-  // Quick Amount helper
-  const handleSelectQuickAmount = (val: number) => {
-    setFormAmountStr(val.toLocaleString('id-ID'));
+      setShowFormModal(false);
+      setFormAmountStr('');
+      setFormNotes('');
+      loadData(true);
+    } catch (err: any) {
+      showToast({
+        title: 'Gagal Mengajukan Kasbon',
+        message: err.message || 'Terjadi kesalahan pada sistem backend.',
+        type: 'error',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Filtered List
   const filteredList = useMemo(() => {
-    return kasbonList.filter((item) => {
-      const st = (item.status || '').toLowerCase();
-      if (activeTab === 'all') return true;
-      if (activeTab === 'pending') return st === 'pending' || st === 'menunggu';
-      if (activeTab === 'active') return st === 'active' || st === 'approved' || st === 'berjalan' || st === 'disetujui';
-      if (activeTab === 'completed') return st === 'completed' || st === 'paid' || st === 'lunas' || st === 'selesai';
-      if (activeTab === 'rejected') return st === 'rejected' || st === 'ditolak' || st === 'cancelled' || st === 'dibatalkan';
-      return true;
-    });
+    if (activeTab === 'all') return kasbonList;
+    if (activeTab === 'pending') {
+      return kasbonList.filter((i) => {
+        const s = (i.status || '').toLowerCase();
+        return s === 'pending' || s === 'menunggu';
+      });
+    }
+    if (activeTab === 'active') {
+      return kasbonList.filter((i) => {
+        const s = (i.status || '').toLowerCase();
+        return s === 'active' || s === 'approved' || s === 'berjalan' || s === 'disetujui';
+      });
+    }
+    if (activeTab === 'completed') {
+      return kasbonList.filter((i) => {
+        const s = (i.status || '').toLowerCase();
+        return s === 'completed' || s === 'paid' || s === 'lunas' || s === 'selesai';
+      });
+    }
+    if (activeTab === 'rejected') {
+      return kasbonList.filter((i) => {
+        const s = (i.status || '').toLowerCase();
+        return s === 'rejected' || s === 'ditolak' || s === 'cancelled' || s === 'dibatalkan';
+      });
+    }
+    return kasbonList;
   }, [kasbonList, activeTab]);
 
-  // Badge Status Helper
-  const getStatusBadge = (statusStr: string) => {
-    const s = (statusStr || '').toLowerCase();
+  // Badge Status
+  const getStatusBadge = (status?: string) => {
+    const s = (status || '').toLowerCase();
     switch (s) {
       case 'approved':
-      case 'disetujui':
       case 'active':
       case 'berjalan':
-        return { label: 'Aktif / Berjalan', bg: '#dcfce7', text: '#166534', icon: 'check-circle' };
+      case 'disetujui':
+        return { label: 'Disetujui', bg: '#eff6ff', border: '#bfdbfe', text: '#2563eb', icon: 'check-circle' };
+      case 'pending':
+      case 'menunggu':
+        return { label: 'Review Akuntansi', bg: '#fffbeb', border: '#fde68a', text: '#d97706', icon: 'schedule' };
       case 'completed':
       case 'paid':
       case 'lunas':
       case 'selesai':
-        return { label: 'Lunas', bg: '#e0e7ff', text: '#3730a3', icon: 'verified' };
+        return { label: 'Lunas', bg: '#ecfdf5', border: '#a7f3d0', text: '#059669', icon: 'verified' };
       case 'rejected':
       case 'ditolak':
-        return { label: 'Ditolak', bg: '#fee2e2', text: '#991b1b', icon: 'cancel' };
       case 'cancelled':
       case 'dibatalkan':
-        return { label: 'Dibatalkan', bg: '#f1f5f9', text: '#64748b', icon: 'block' };
-      case 'pending':
-      case 'menunggu':
+        return { label: 'Dibatalkan', bg: '#fef2f2', border: '#fecaca', text: '#dc2626', icon: 'cancel' };
       default:
-        return { label: 'Review Akuntansi', bg: '#fef3c7', text: '#92400e', icon: 'hourglass-empty' };
+        return { label: 'Review Akuntansi', bg: '#fffbeb', border: '#fde68a', text: '#d97706', icon: 'schedule' };
     }
   };
 
@@ -371,17 +383,20 @@ export default function KasbonScreen() {
       );
     }
 
-    // Hitung progress cicilan
     const totalTenor = Math.max(1, Number(item.installment_count) || 1);
+    const mDeduct = Number(item.monthly_deduction) > 0 ? Number(item.monthly_deduction) : Math.round(Number(item.amount) / totalTenor);
+    const remBal = item.remaining_balance !== undefined ? Number(item.remaining_balance) : Number(item.amount);
+    const paidDiff = Math.max(0, Number(item.amount) - remBal);
+
     let paidCount = 0;
     if (isCompleted) {
       paidCount = totalTenor;
-    } else if (item.paid_installments_count !== undefined) {
-      paidCount = item.paid_installments_count;
-    } else if (item.remaining_balance !== undefined && Number(item.amount) > 0) {
-      const remaining = Number(item.remaining_balance);
-      const paidAmt = Math.max(0, Number(item.amount) - remaining);
-      paidCount = Math.min(totalTenor, Math.floor((paidAmt / Number(item.amount)) * totalTenor));
+    } else if (Number(item.paid_installments_count) > 0) {
+      paidCount = Number(item.paid_installments_count);
+    } else if (item.payments && item.payments.length > 0) {
+      paidCount = item.payments.length;
+    } else if (mDeduct > 0 && paidDiff > 0) {
+      paidCount = Math.min(totalTenor, Math.round(paidDiff / mDeduct));
     }
 
     const progressPercent = Math.min(100, Math.round((paidCount / totalTenor) * 100));
@@ -390,58 +405,50 @@ export default function KasbonScreen() {
       <View style={styles.cardTimelineContainer}>
         {/* Step indicators */}
         <View style={styles.cardTimelineStepsRow}>
-          {/* Step 1: Diajukan */}
           <View style={styles.timelineStepItem}>
             <View style={[styles.stepCircle, styles.stepCircleDone]}>
-              <MaterialIcons name="check" size={11} color="#ffffff" />
+              <MaterialIcons name="check" size={10} color="#ffffff" />
             </View>
             <Text style={styles.stepLabelDone}>Diajukan</Text>
           </View>
 
-          <View style={[styles.stepConnectorLine, (isActive || isCompleted) ? styles.stepConnectorDone : styles.stepConnectorPending]} />
+          <View style={[styles.timelineConnector, (isActive || isCompleted) && styles.timelineConnectorDone]} />
 
-          {/* Step 2: Akuntansi */}
           <View style={styles.timelineStepItem}>
-            <View style={[
-              styles.stepCircle,
-              isPending ? styles.stepCircleCurrent : (isActive || isCompleted ? styles.stepCircleDone : styles.stepCirclePending),
-            ]}>
-              {isActive || isCompleted ? (
-                <MaterialIcons name="check" size={11} color="#ffffff" />
+            <View style={[styles.stepCircle, (isActive || isCompleted) ? styles.stepCircleDone : (isPending ? styles.stepCircleActive : styles.stepCirclePending)]}>
+              {(isActive || isCompleted) ? (
+                <MaterialIcons name="check" size={10} color="#ffffff" />
+              ) : isPending ? (
+                <MaterialIcons name="hourglass-empty" size={10} color="#ffffff" />
               ) : (
-                <MaterialIcons name="receipt-long" size={11} color={isPending ? '#b45309' : '#94a3b8'} />
+                <Text style={styles.stepNumberPending}>2</Text>
               )}
             </View>
-            <Text style={isPending ? styles.stepLabelCurrent : (isActive || isCompleted ? styles.stepLabelDone : styles.stepLabelPending)}>
-              Akuntansi
+            <Text style={(isActive || isCompleted) ? styles.stepLabelDone : (isPending ? styles.stepLabelActive : styles.stepLabelPending)}>
+              Review
             </Text>
           </View>
 
-          <View style={[styles.stepConnectorLine, isCompleted ? styles.stepConnectorDone : (isActive ? styles.stepConnectorActive : styles.stepConnectorPending)]} />
+          <View style={[styles.timelineConnector, (isActive || isCompleted) && styles.timelineConnectorDone]} />
 
-          {/* Step 3: Potong Gaji */}
           <View style={styles.timelineStepItem}>
-            <View style={[
-              styles.stepCircle,
-              isActive ? styles.stepCircleCurrent : (isCompleted ? styles.stepCircleDone : styles.stepCirclePending),
-            ]}>
-              {isCompleted ? (
-                <MaterialIcons name="check" size={11} color="#ffffff" />
+            <View style={[styles.stepCircle, (isActive || isCompleted) ? styles.stepCircleDone : styles.stepCirclePending]}>
+              {(isActive || isCompleted) ? (
+                <MaterialIcons name="check" size={10} color="#ffffff" />
               ) : (
-                <MaterialIcons name="payments" size={11} color={isActive ? '#1d4ed8' : '#94a3b8'} />
+                <Text style={styles.stepNumberPending}>3</Text>
               )}
             </View>
-            <Text style={isActive ? styles.stepLabelCurrent : (isCompleted ? styles.stepLabelDone : styles.stepLabelPending)}>
+            <Text style={(isActive || isCompleted) ? styles.stepLabelDone : styles.stepLabelPending}>
               Potong Gaji
             </Text>
           </View>
 
-          <View style={[styles.stepConnectorLine, isCompleted ? styles.stepConnectorDone : styles.stepConnectorPending]} />
+          <View style={[styles.timelineConnector, isCompleted && styles.timelineConnectorDone]} />
 
-          {/* Step 4: Lunas */}
           <View style={styles.timelineStepItem}>
             <View style={[styles.stepCircle, isCompleted ? styles.stepCircleDone : styles.stepCirclePending]}>
-              <MaterialIcons name="verified" size={11} color={isCompleted ? '#ffffff' : '#94a3b8'} />
+              <MaterialIcons name="verified" size={10} color={isCompleted ? '#ffffff' : '#94a3b8'} />
             </View>
             <Text style={isCompleted ? styles.stepLabelDone : styles.stepLabelPending}>Lunas</Text>
           </View>
@@ -467,268 +474,358 @@ export default function KasbonScreen() {
     );
   };
 
+  const hasDebt = Number(summary?.remaining_balance || 0) > 0;
+
   return (
-    <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[theme.colors.primary]}
-            tintColor={theme.colors.primary}
-          />
-        }
-      >
-        {/* SUMMARY CARD SECTION (SESUAI RESPONSE DATABASE BACKEND) */}
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryHeader}>
-            <View style={styles.summaryHeaderLeft}>
-              <View style={styles.summaryIconWrap}>
-                <MaterialIcons name="account-balance-wallet" size={22} color="#ffffff" />
-              </View>
-              <View>
-                <Text style={styles.summaryHeaderTitle}>Pinjaman Kasbon</Text>
-                <Text style={styles.summaryHeaderSub}>
-                  {summary?.active_count ? `${summary.active_count} Pinjaman Aktif` : 'Tidak Ada Pinjaman Aktif'}
-                  {Number(summary?.total_pending_amount || 0) > 0 ? ' • 1 Pending' : ''}
+    <View style={styles.rootWrapper}>
+      {/* 1. TOP HEADER (Deep Corporate Blue) */}
+      <View style={[styles.headerHeroContainer, { paddingTop: Math.max(insets.top + 8, 20) }]}>
+        <View style={styles.headerTopBar}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace('/(tabs)/profile');
+                }
+              }}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <MaterialIcons name="arrow-back" size={24} color="#ffffff" />
+            </TouchableOpacity>
+
+            <View style={{ flex: 1, marginLeft: 6 }}>
+              <Text style={styles.headerTitle}>Kasbon Karyawan</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* 2. ELEVATED HERO CARD (Sesuai Gaya Evaluasi) */}
+        <View style={styles.scoreHeroCard}>
+          <View style={styles.scoreHeroRow}>
+            {/* Highlight Box Left */}
+            <View style={[
+              styles.gaugeOuter,
+              {
+                borderColor: hasDebt ? '#fed7aa' : '#a7f3d0',
+                backgroundColor: hasDebt ? '#fff7ed' : '#ecfdf5',
+              }
+            ]}>
+              <MaterialIcons
+                name={hasDebt ? 'account-balance-wallet' : 'verified'}
+                size={24}
+                color={hasDebt ? '#ea580c' : '#059669'}
+              />
+              <Text style={[styles.gaugeMainText, { color: hasDebt ? '#ea580c' : '#059669' }]}>
+                {hasDebt ? 'AKTIF' : 'LUNAS'}
+              </Text>
+              <Text style={styles.gaugeScale}>STATUS KASBON</Text>
+            </View>
+
+            {/* Right Summary Content */}
+            <View style={styles.heroRightContent}>
+              <View style={[
+                styles.heroPredicatePill,
+                { backgroundColor: hasDebt ? '#f97316' : '#10b981' }
+              ]}>
+                <MaterialIcons
+                  name={hasDebt ? 'lock-clock' : 'check-circle'}
+                  size={14}
+                  color="#ffffff"
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={styles.heroPredicateText}>
+                  {hasDebt ? 'Tanggungan Aktif' : 'Bebas Tanggungan'}
                 </Text>
               </View>
-            </View>
-            <TouchableOpacity
-              style={styles.refreshIconBtn}
-              onPress={() => loadData(true)}
-              disabled={refreshing}
-            >
-              <MaterialIcons name="refresh" size={20} color="#ffffff" />
-            </TouchableOpacity>
-          </View>
 
-          <View style={styles.summaryDivider} />
-
-          {/* MAIN VALUE: TOTAL REMAINING BALANCE DARI DATABASE */}
-          <View style={styles.summaryBody}>
-            <View style={styles.summaryCol}>
-              <Text style={styles.summaryLabel}>Total Sisa Tagihan Kasbon</Text>
-              <Text style={styles.summaryMainValue}>
+              <Text style={styles.heroBalanceMain}>
                 {formatRupiah(summary?.remaining_balance || 0)}
               </Text>
-            </View>
-          </View>
-
-          {/* GRID DATA SESUAI RESPONSE BACKEND */}
-          <View style={styles.summaryGrid}>
-            <View style={styles.summaryGridItem}>
-              <Text style={styles.summarySubLabel}>Potongan / Bln</Text>
-              <Text style={styles.summarySubValue}>
-                {activeMonthlyDeduction > 0 ? formatRupiah(activeMonthlyDeduction) : '-'}
+              <Text style={styles.heroPeriodNotice}>
+                {summary?.active_count ? `${summary.active_count} Pinjaman Berjalan` : 'Tidak Ada Tagihan Berjalan'}
+                {Number(summary?.total_pending_amount || 0) > 0 ? ' • 1 Menunggu Review' : ''}
               </Text>
-            </View>
 
-            <View style={styles.summarySubDivider} />
+              {/* 3 Mini Metric Cards */}
+              <View style={styles.heroMiniCardsRow}>
+                <View style={styles.heroMiniCard}>
+                  <MaterialIcons name="payments" size={13} color="#2563eb" />
+                  <Text style={styles.heroMiniCardVal}>
+                    {activeMonthlyDeduction > 0 ? formatRupiah(activeMonthlyDeduction) : '-'}
+                  </Text>
+                  <Text style={styles.heroMiniCardLbl}>Potongan/Bln</Text>
+                </View>
 
-            <View style={styles.summaryGridItem}>
-              <Text style={styles.summarySubLabel}>Sisa Angsuran</Text>
-              <Text style={styles.summarySubValue}>
-                {activeRemainingInstallments > 0 ? `${activeRemainingInstallments}x Bulan` : (summary?.remaining_balance === 0 ? 'Lunas' : '-')}
-              </Text>
-            </View>
+                <View style={styles.heroMiniCard}>
+                  <MaterialIcons name="date-range" size={13} color="#059669" />
+                  <Text style={styles.heroMiniCardVal}>
+                    {activeRemainingInstallments > 0 ? `${activeRemainingInstallments}x Bln` : (hasDebt ? '-' : 'Lunas')}
+                  </Text>
+                  <Text style={styles.heroMiniCardLbl}>Sisa Tenor</Text>
+                </View>
 
-            <View style={styles.summarySubDivider} />
-
-            <View style={styles.summaryGridItem}>
-              <Text style={styles.summarySubLabel}>Gaji Pokok</Text>
-              <Text style={styles.summarySubValue}>
-                {summary?.base_salary ? formatRupiah(summary.base_salary) : '-'}
-              </Text>
-            </View>
-          </View>
-
-          {/* STRIP KHUSUS BILA ADA TOTAL PENDING AMOUNT DARI DATABASE */}
-          {Number(summary?.total_pending_amount || 0) > 0 ? (
-            <View style={styles.summaryPendingBanner}>
-              <View style={styles.pendingBadgeDot} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.pendingBannerTitle}>
-                  Pengajuan Dalam Review: {formatRupiah(summary?.total_pending_amount)}
-                </Text>
-                <Text style={styles.pendingBannerDesc}>
-                  Sedang dalam peninjauan Akuntansi untuk penetapan potongan.
-                </Text>
+                <View style={styles.heroMiniCard}>
+                  <MaterialIcons name="hourglass-empty" size={13} color="#d97706" />
+                  <Text style={styles.heroMiniCardVal}>
+                    {Number(summary?.total_pending_amount || 0) > 0 ? '1' : '0'}
+                  </Text>
+                  <Text style={styles.heroMiniCardLbl}>Pending</Text>
+                </View>
               </View>
             </View>
-          ) : null}
-        </View>
-
-        {/* ACTION BUTTON / BANNER: HANYA BISA DIAJUKAN JIKA KASBON SEBELUMNYA LUNAS */}
-        {hasActiveDebt ? (
-          <View style={styles.lockedKasbonBanner}>
-            <View style={styles.lockedIconWrap}>
-              <MaterialIcons name="lock" size={22} color="#b45309" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.lockedBannerTitle}>Pengajuan Kasbon Baru Terkunci</Text>
-              <Text style={styles.lockedBannerDesc}>
-                {Number(summary?.total_pending_amount || 0) > 0
-                  ? `Anda masih memiliki pengajuan kasbon sebesar ${formatRupiah(summary?.total_pending_amount)} yang sedang berstatus review/pending.`
-                  : `Anda masih memiliki sisa tagihan kasbon aktif sebesar ${formatRupiah(summary?.remaining_balance)}. Sesuai kebijakan perusahaan, kasbon baru hanya dapat diajukan setelah kasbon sebelumnya LUNAS.`}
-              </Text>
-            </View>
           </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.btnPrimaryAction}
-            activeOpacity={0.85}
-            onPress={handlePressApplyKasbon}
-          >
-            <View style={styles.btnIconWrap}>
-              <MaterialIcons name="add" size={22} color={theme.colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.btnPrimaryActionTitle}>Ajukan Kasbon Baru</Text>
-              <Text style={styles.btnPrimaryActionSub}>
-                Bebas tanggungan • Pilih tenor angsuran
-              </Text>
-            </View>
-            <MaterialIcons name="arrow-forward-ios" size={16} color="#ffffff" />
-          </TouchableOpacity>
-        )}
-
-        {/* SECTION RIWAYAT KASBON */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Riwayat & Progres Kasbon</Text>
-          <Text style={styles.sectionSubtitle}>
-            Total: {kasbonList.length} pengajuan
-          </Text>
         </View>
 
-        {/* FILTER TABS */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.filterTabsScroll}
-          contentContainerStyle={styles.filterTabsContainer}
-        >
+        {/* 3. SEGMENTED FILTER TABS */}
+        <View style={styles.tabsContainer}>
           {[
-            { key: 'all', label: 'Semua' },
-            { key: 'pending', label: 'Review Akuntansi' },
-            { key: 'active', label: 'Aktif' },
-            { key: 'completed', label: 'Lunas' },
-            { key: 'rejected', label: 'Ditolak' },
+            { key: 'all' as FilterTab, label: 'Semua', icon: 'view-list' },
+            { key: 'pending' as FilterTab, label: 'Review', icon: 'schedule' },
+            { key: 'active' as FilterTab, label: 'Berjalan', icon: 'timelapse' },
+            { key: 'completed' as FilterTab, label: 'Lunas', icon: 'verified' },
           ].map((tab) => {
             const isActive = activeTab === tab.key;
             return (
               <TouchableOpacity
                 key={tab.key}
-                style={[styles.filterChip, isActive && styles.filterChipActive]}
-                onPress={() => setActiveTab(tab.key as FilterTab)}
-                activeOpacity={0.7}
+                style={[styles.tabItem, isActive && styles.tabItemActive]}
+                onPress={() => setActiveTab(tab.key)}
+                activeOpacity={0.8}
               >
-                <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                <MaterialIcons
+                  name={tab.icon as any}
+                  size={15}
+                  color={isActive ? theme.colors.primary : '#64748b'}
+                  style={{ marginRight: 3 }}
+                />
+                <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
                   {tab.label}
                 </Text>
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
+      </View>
 
-        {/* LIST KASBON */}
-        {loading ? (
-          <View style={styles.centerLoading}>
-            <ActivityIndicator size="large" color={theme.colors.primary} />
-            <Text style={styles.loadingText}>Memuat riwayat kasbon...</Text>
+      {/* 4. CONTENT BODY */}
+      {loading ? (
+        <View style={styles.centerLoading}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.loadingText}>Memuat riwayat kasbon...</Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.contentScroll}
+          contentContainerStyle={styles.contentScrollInner}
+          showsVerticalScrollIndicator={false}
+          alwaysBounceVertical={true}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[theme.colors.primary]}
+              tintColor={theme.colors.primary}
+            />
+          }
+        >
+          {/* BANNER / ACTION BUTTON AJUKAN KASBON */}
+          {hasActiveDebt ? (
+            <View style={styles.lockedKasbonBanner}>
+              <View style={styles.lockedIconWrap}>
+                <MaterialIcons name="lock" size={22} color="#b45309" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.lockedBannerTitle}>Pengajuan Kasbon Baru Terkunci</Text>
+                <Text style={styles.lockedBannerDesc}>
+                  {Number(summary?.total_pending_amount || 0) > 0
+                    ? `Anda memiliki pengajuan kasbon sebesar ${formatRupiah(summary?.total_pending_amount)} yang sedang dalam status review.`
+                    : `Sisa tagihan aktif: ${formatRupiah(summary?.remaining_balance)}. Sesuai aturan perusahaan, pengajuan baru hanya dibuka setelah tagihan sebelumnya LUNAS.`}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.btnApplyCard}
+              activeOpacity={0.85}
+              onPress={handlePressApplyKasbon}
+            >
+              <View style={styles.btnApplyIconCircle}>
+                <MaterialIcons name="add" size={24} color={theme.colors.primary} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.btnApplyTitle}>Ajukan Kasbon Baru</Text>
+                <Text style={styles.btnApplySub}>
+                  Bebas tanggungan • Tentukan nominal & tenor
+                </Text>
+              </View>
+              <View style={styles.cardActionArrow}>
+                <MaterialIcons name="arrow-forward" size={14} color="#ffffff" />
+              </View>
+            </TouchableOpacity>
+          )}
+
+          {/* SECTION HEADER */}
+          <View style={styles.sectionHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>Daftar Pinjaman Karyawan</Text>
+              <Text style={styles.sectionSubtitle}>Ketuk kartu untuk melihat rincian angsuran</Text>
+            </View>
+            <View style={styles.countBadge}>
+              <Text style={styles.countBadgeText}>{filteredList.length} Pengajuan</Text>
+            </View>
           </View>
-        ) : filteredList.length === 0 ? (
-          <View style={styles.emptyState}>
-            <MaterialCommunityIcons name="cash-remove" size={54} color={theme.colors.textMuted} />
-            <Text style={styles.emptyTitle}>Belum Ada Kasbon</Text>
-            <Text style={styles.emptySubtitle}>
-              {activeTab === 'all'
-                ? 'Anda belum memiliki riwayat pengajuan pinjaman kasbon.'
-                : `Tidak ada kasbon dengan status "${activeTab}".`}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.listContainer}>
-            {filteredList.map((item) => {
-              const badge = getStatusBadge(item.status);
-              const isPending = item.status === 'pending' || item.status === 'menunggu';
+
+          {/* LIST KASBON */}
+          {filteredList.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <MaterialIcons name="account-balance-wallet" size={54} color="#cbd5e1" />
+              <Text style={styles.emptyTitle}>Belum Ada Kasbon</Text>
+              <Text style={styles.emptyDesc}>
+                {activeTab === 'all'
+                  ? 'Anda belum memiliki riwayat pengajuan pinjaman kasbon.'
+                  : `Tidak ada data kasbon pada kategori ${activeTab}.`}
+              </Text>
+            </View>
+          ) : (
+            filteredList.map((item) => {
+              const b = getStatusBadge(item.status);
+              const isPending = (item.status || '').toLowerCase() === 'pending';
+
               return (
                 <TouchableOpacity
                   key={item.id}
-                  style={styles.kasbonCard}
-                  activeOpacity={0.85}
+                  style={styles.cardItem}
                   onPress={() => handleOpenDetail(item)}
+                  activeOpacity={0.88}
                 >
-                  <View style={styles.cardTopRow}>
-                    <View style={styles.cardNominalWrap}>
-                      <Text style={styles.cardNominalLabel}>Total Pinjaman</Text>
-                      <Text style={styles.cardNominalValue}>{formatRupiah(item.amount)}</Text>
+                  {/* Top Header Row of Card */}
+                  <View style={styles.cardHeaderRow}>
+                    <View style={{ flex: 1, paddingRight: 8 }}>
+                      <View style={styles.cardMonthTitleRow}>
+                        <Text style={styles.cardMonthText}>{formatDate(item.loan_date || item.created_at)}</Text>
+                      </View>
+                      <Text style={styles.cardWorkingDaysText}>
+                        Tenor: {item.installment_count} Bulan Angsuran
+                      </Text>
                     </View>
-                    <View style={[styles.badge, { backgroundColor: badge.bg }]}>
-                      <MaterialIcons name={badge.icon as any} size={14} color={badge.text} style={{ marginRight: 4 }} />
-                      <Text style={[styles.badgeText, { color: badge.text }]}>{badge.label}</Text>
+
+                    {/* Status Approval Pill */}
+                    <View style={[styles.statusPill, { backgroundColor: b.bg, borderColor: b.border }]}>
+                      <MaterialIcons name={b.icon as any} size={13} color={b.text} style={{ marginRight: 4 }} />
+                      <Text style={[styles.statusPillText, { color: b.text }]}>{b.label}</Text>
                     </View>
                   </View>
 
-                  {/* PROGRES TIMELINE STEPPER PADA KARTU */}
+                  {/* Nominal Highlight Banner */}
+                  <View style={styles.scoreBanner}>
+                    <View style={styles.scoreBannerLeft}>
+                      <Text style={styles.scoreBigNum}>{formatRupiah(item.amount)}</Text>
+                      <View style={{ marginLeft: 10 }}>
+                        <Text style={styles.scoreBannerLbl}>NOMINAL KASBON</Text>
+                        <Text style={styles.scoreBannerPredicate}>
+                          {Number(item.remaining_balance ?? item.amount) > 0
+                            ? `Sisa ${formatRupiah(item.remaining_balance ?? item.amount)}`
+                            : 'Lunas'}
+                        </Text>
+                      </View>
+                    </View>
+                    <MaterialCommunityIcons name="wallet-outline" size={26} color={theme.colors.primary} />
+                  </View>
+
+                  {/* Horizontal Timeline Stepper & Progress */}
                   {renderCardTimeline(item)}
 
-                  <View style={styles.cardDetailsRow}>
-                    <View style={styles.cardDetailCol}>
-                      <Text style={styles.detailColLabel}>Tenor Pengajuan</Text>
-                      <Text style={styles.detailColValue}>{item.installment_count}x Bulan</Text>
+                  {/* 4 Mini Stat Badges */}
+                  <View style={styles.statGrid}>
+                    <View style={styles.statCell}>
+                      <MaterialCommunityIcons name="calendar-sync" size={17} color="#2563eb" />
+                      <View style={{ marginLeft: 6 }}>
+                        <Text style={styles.statCellVal}>
+                          {Number(item.monthly_deduction) > 0 ? formatRupiah(item.monthly_deduction) : 'Menunggu Akun.'}
+                        </Text>
+                        <Text style={styles.statCellLbl}>Potongan / Bln</Text>
+                      </View>
                     </View>
-                    <View style={styles.detailColDivider} />
-                    <View style={styles.cardDetailCol}>
-                      <Text style={styles.detailColLabel}>Potongan Akuntansi</Text>
-                      <Text style={styles.detailColValue}>
-                        {Number(item.monthly_deduction) > 0 ? formatRupiah(item.monthly_deduction) : 'Ditetapkan Akun.'}
-                      </Text>
+
+                    <View style={styles.statCell}>
+                      <MaterialCommunityIcons name="clock-outline" size={17} color="#ea580c" />
+                      <View style={{ marginLeft: 6 }}>
+                        <Text style={styles.statCellVal}>{item.installment_count} Bulan</Text>
+                        <Text style={styles.statCellLbl}>Jangka Waktu</Text>
+                      </View>
                     </View>
-                    <View style={styles.detailColDivider} />
-                    <View style={styles.cardDetailCol}>
-                      <Text style={styles.detailColLabel}>Tgl Diajukan</Text>
-                      <Text style={styles.detailColValue}>{formatDate(item.created_at)}</Text>
+
+                    <View style={styles.statCell}>
+                      <MaterialCommunityIcons name="cash-multiple" size={17} color="#059669" />
+                      <View style={{ marginLeft: 6 }}>
+                        <Text style={styles.statCellVal}>
+                          {item.remaining_balance !== undefined ? formatRupiah(item.remaining_balance) : formatRupiah(item.amount)}
+                        </Text>
+                        <Text style={styles.statCellLbl}>Sisa Saldo</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.statCell}>
+                      <MaterialCommunityIcons name="check-decagram" size={17} color="#7c3aed" />
+                      <View style={{ marginLeft: 6 }}>
+                        <Text style={styles.statCellVal}>{b.label}</Text>
+                        <Text style={styles.statCellLbl}>Status Kasbon</Text>
+                      </View>
                     </View>
                   </View>
 
+                  {/* Catatan / Keperluan Box */}
                   {item.notes ? (
-                    <View style={styles.cardNotesBox}>
-                      <MaterialIcons name="format-quote" size={14} color={theme.colors.textMuted} />
-                      <Text style={styles.cardNotesText} numberOfLines={1}>
-                        {item.notes}
-                      </Text>
+                    <View style={styles.notesBox}>
+                      <MaterialIcons name="format-quote" size={18} color="#4f46e5" style={{ marginRight: 4 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.notesBoxTitle}>Keperluan Pengajuan:</Text>
+                        <Text style={styles.notesBoxContent}>"{item.notes}"</Text>
+                      </View>
                     </View>
                   ) : null}
 
-                  <View style={styles.cardFooter}>
-                    <Text style={styles.tapDetailText}>Ketuk untuk lihat timeline lengkap</Text>
-                    <View style={styles.cardFooterRight}>
-                      {isPending ? (
-                        <TouchableOpacity
-                          style={styles.btnSmallCancel}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            handleCancelKasbon(item.id);
-                          }}
-                        >
-                          <MaterialIcons name="close" size={14} color="#dc2626" />
-                          <Text style={styles.btnSmallCancelText}>Batalkan</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                      <MaterialIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
+                  {/* Action Row */}
+                  <View style={styles.cardActionRow}>
+                    {isPending ? (
+                      <TouchableOpacity
+                        style={styles.btnCancelPending}
+                        onPress={() => handleCancelKasbon(item.id)}
+                        disabled={cancellingId === item.id}
+                        activeOpacity={0.8}
+                      >
+                        {cancellingId === item.id ? (
+                          <ActivityIndicator size="small" color="#dc2626" />
+                        ) : (
+                          <>
+                            <MaterialIcons name="delete-outline" size={15} color="#dc2626" style={{ marginRight: 4 }} />
+                            <Text style={styles.btnCancelPendingText}>Batalkan</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    ) : null}
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 'auto' }}>
+                      <Text style={styles.cardActionText}>Buka Rincian & Jadwal Angsuran</Text>
+                      <View style={styles.cardActionArrow}>
+                        <MaterialIcons name="arrow-forward" size={14} color="#ffffff" />
+                      </View>
                     </View>
                   </View>
                 </TouchableOpacity>
               );
-            })}
-          </View>
-        )}
-      </ScrollView>
+            })
+          )}
 
-      {/* MODAL FORM PENGAJUAN KASBON */}
+          <View style={{ height: 48 }} />
+        </ScrollView>
+      )}
+
+      {/* 5. MODAL FORM PENGAJUAN KASBON BARU (Bottom Sheet) */}
       <Modal
         visible={showFormModal}
         animationType="slide"
@@ -739,24 +836,26 @@ export default function KasbonScreen() {
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalOverlay}
+          style={styles.modalBackdrop}
         >
-          <View style={[styles.modalSheet, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>Form Pengajuan Kasbon</Text>
-                <Text style={styles.modalSubtitle}>Kirim permohonan pinjaman karyawan</Text>
+          <View style={[styles.modalSheet, { maxHeight: '92%' }]}>
+            <View style={styles.modalGrabHandle} />
+
+            <View style={styles.modalHeadBar}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalHeadTitle}>Ajukan Kasbon Baru</Text>
+                <Text style={styles.modalHeadSubtitle}>Formulir pinjaman resmi karyawan</Text>
               </View>
               <TouchableOpacity
-                style={styles.modalCloseBtn}
+                style={styles.modalCloseCircle}
                 onPress={() => setShowFormModal(false)}
                 disabled={isSubmitting}
               >
-                <MaterialIcons name="close" size={22} color={theme.colors.text} />
+                <MaterialIcons name="close" size={20} color="#64748b" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={styles.modalFormBody}>
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.modalBodyScroll}>
               {/* INPUT NOMINAL */}
               <View style={styles.formGroup}>
                 <Text style={styles.formLabel}>Nominal Kasbon (Rp) *</Text>
@@ -765,7 +864,7 @@ export default function KasbonScreen() {
                   <TextInput
                     style={styles.currencyInput}
                     placeholder="Contoh: 2.000.000"
-                    placeholderTextColor={theme.colors.textMuted}
+                    placeholderTextColor="#94a3b8"
                     keyboardType="numeric"
                     value={formAmountStr}
                     onChangeText={(txt) => {
@@ -789,6 +888,7 @@ export default function KasbonScreen() {
                         numericAmount === val && styles.quickAmountChipActive,
                       ]}
                       onPress={() => handleSelectQuickAmount(val)}
+                      activeOpacity={0.8}
                     >
                       <Text
                         style={[
@@ -814,6 +914,7 @@ export default function KasbonScreen() {
                         key={tenor}
                         style={[styles.tenorChip, isSelected && styles.tenorChipActive]}
                         onPress={() => setFormTenor(tenor)}
+                        activeOpacity={0.8}
                       >
                         <Text style={[styles.tenorChipText, isSelected && styles.tenorChipTextActive]}>
                           {tenor} Bln
@@ -824,11 +925,11 @@ export default function KasbonScreen() {
                 </View>
               </View>
 
-              {/* CARD INFORMASI PENETAPAN POTONGAN OLEH AKUNTANSI */}
+              {/* ESTIMASI ANGSURAN CARD */}
               <View style={styles.simulationCard}>
                 <View style={styles.simulationHeader}>
-                  <MaterialIcons name="account-balance" size={20} color={theme.colors.primary} />
-                  <Text style={styles.simulationTitle}>Penetapan Potongan Slip Gaji</Text>
+                  <MaterialIcons name="account-balance" size={18} color={theme.colors.primary} />
+                  <Text style={styles.simulationTitle}>Estimasi Potongan Slip Gaji</Text>
                 </View>
 
                 <View style={styles.simulationRow}>
@@ -839,9 +940,9 @@ export default function KasbonScreen() {
                 </View>
 
                 <View style={styles.accountingNoticeBox}>
-                  <MaterialIcons name="info-outline" size={17} color="#1e40af" style={{ marginRight: 6, marginTop: 1 }} />
+                  <MaterialIcons name="info-outline" size={16} color="#1e40af" style={{ marginRight: 6, marginTop: 1 }} />
                   <Text style={styles.simulationNotes}>
-                    Besaran potongan bulanan final (<Text style={{ fontStyle: 'italic' }}>monthly deduction</Text>) akan ditentukan & diinput langsung oleh staf <Text style={{ fontWeight: 'bold' }}>Akuntansi</Text> melalui portal web master potongan (<Text style={{ fontStyle: 'italic' }}>deduction_types</Text>).
+                    Besaran potongan bulanan final (<Text style={{ fontStyle: 'italic' }}>monthly deduction</Text>) akan ditentukan & diinput langsung oleh staf <Text style={{ fontWeight: 'bold' }}>Akuntansi</Text> melalui portal master potongan.
                   </Text>
                 </View>
               </View>
@@ -852,7 +953,7 @@ export default function KasbonScreen() {
                 <TextInput
                   style={styles.notesTextarea}
                   placeholder="Jelaskan kebutuhan pengajuan kasbon (contoh: Keperluan mendesak keluarga)"
-                  placeholderTextColor={theme.colors.textMuted}
+                  placeholderTextColor="#94a3b8"
                   multiline={true}
                   numberOfLines={4}
                   textAlignVertical="top"
@@ -875,272 +976,237 @@ export default function KasbonScreen() {
                   <ActivityIndicator size="small" color="#ffffff" />
                 ) : (
                   <>
-                    <MaterialIcons name="send" size={20} color="#ffffff" style={{ marginRight: 8 }} />
+                    <MaterialIcons name="send" size={18} color="#ffffff" style={{ marginRight: 8 }} />
                     <Text style={styles.btnSubmitText}>Kirim Pengajuan Kasbon</Text>
                   </>
                 )}
               </TouchableOpacity>
+
+              <View style={{ height: 40 }} />
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* MODAL DETAIL KASBON & PROGRESS TIMELINE */}
+      {/* 6. MODAL DETAIL KASBON & PROGRESS TIMELINE */}
       <Modal
         visible={!!selectedKasbon}
         animationType="slide"
         transparent={true}
         onRequestClose={() => setSelectedKasbon(null)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>Detail & Timeline Kasbon</Text>
-                <Text style={styles.modalSubtitle}>ID: #{selectedKasbon?.id}</Text>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalSheet, { maxHeight: '90%' }]}>
+            <View style={styles.modalGrabHandle} />
+
+            <View style={styles.modalHeadBar}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalHeadTitle}>Detail & Jadwal Angsuran</Text>
+                <Text style={styles.modalHeadSubtitle}>
+                  {formatDate(selectedKasbon?.loan_date || selectedKasbon?.created_at)}
+                </Text>
               </View>
               <TouchableOpacity
-                style={styles.modalCloseBtn}
+                style={styles.modalCloseCircle}
                 onPress={() => setSelectedKasbon(null)}
               >
-                <MaterialIcons name="close" size={22} color={theme.colors.text} />
+                <MaterialIcons name="close" size={20} color="#64748b" />
               </TouchableOpacity>
             </View>
 
             {detailLoading ? (
-              <View style={styles.centerLoading}>
+              <View style={[styles.centerLoading, { paddingVertical: 40 }]}>
                 <ActivityIndicator size="large" color={theme.colors.primary} />
                 <Text style={styles.loadingText}>Memuat rincian & timeline...</Text>
               </View>
             ) : selectedKasbon ? (
-              <ScrollView showsVerticalScrollIndicator={false} style={styles.modalFormBody}>
-                {/* STATUS BADGE BIG */}
+              <ScrollView showsVerticalScrollIndicator={false} style={styles.modalBodyScroll}>
+                {/* STATUS BADGE HERO */}
                 {(() => {
                   const b = getStatusBadge(selectedKasbon.status);
                   return (
-                    <View style={[styles.detailStatusBanner, { backgroundColor: b.bg }]}>
-                      <MaterialIcons name={b.icon as any} size={22} color={b.text} />
-                      <Text style={[styles.detailStatusText, { color: b.text }]}>{b.label}</Text>
+                    <View style={[styles.modalScoreHero, { backgroundColor: b.bg, borderColor: b.border }]}>
+                      <Text style={[styles.modalScoreLarge, { color: b.text }]}>
+                        {formatRupiah(selectedKasbon.amount)}
+                      </Text>
+                      <View style={[styles.modalPredBadge, { backgroundColor: b.text, marginTop: 6 }]}>
+                        <Text style={styles.modalPredBadgeText}>{b.label}</Text>
+                      </View>
+                      <Text style={styles.modalStatusNote}>
+                        Tenor: <Text style={{ fontWeight: 'bold' }}>{selectedKasbon.installment_count} Bulan</Text> • Tanggal: {formatDate(selectedKasbon.loan_date || selectedKasbon.created_at)}
+                      </Text>
                     </View>
                   );
                 })()}
 
-                {/* HIGHLIGHT VALUES */}
-                <View style={styles.detailHighlightCard}>
-                  <View style={styles.detailHighlightCol}>
-                    <Text style={styles.detailHighlightLabel}>Nominal Pinjaman</Text>
-                    <Text style={styles.detailHighlightVal}>{formatRupiah(selectedKasbon.amount)}</Text>
+                {/* PARAMETER STATS GRID */}
+                <Text style={styles.modalSectionTitle}>Rincian Finansial Kasbon</Text>
+                <View style={styles.modalStatsGrid}>
+                  <View style={styles.modalStatTile}>
+                    <Text style={styles.modalStatTileVal}>{formatRupiah(selectedKasbon.amount)}</Text>
+                    <Text style={styles.modalStatTileLbl}>Total Pinjaman</Text>
                   </View>
-                  <View style={styles.detailHighlightDivider} />
-                  <View style={styles.detailHighlightCol}>
-                    <Text style={styles.detailHighlightLabel}>Potongan Akuntansi</Text>
-                    <Text style={[styles.detailHighlightVal, { color: theme.colors.primary }]}>
-                      {Number(selectedKasbon.monthly_deduction) > 0
-                        ? `${formatRupiah(selectedKasbon.monthly_deduction)}/bln`
-                        : 'Menunggu Akun.'}
+
+                  <View style={styles.modalStatTile}>
+                    <Text style={[styles.modalStatTileVal, { color: '#059669' }]}>
+                      {Number(selectedKasbon.monthly_deduction) > 0 ? formatRupiah(selectedKasbon.monthly_deduction) : 'Menunggu'}
                     </Text>
+                    <Text style={styles.modalStatTileLbl}>Potongan/Bln</Text>
+                  </View>
+
+                  <View style={styles.modalStatTile}>
+                    <Text style={[styles.modalStatTileVal, { color: '#ea580c' }]}>
+                      {selectedKasbon.remaining_balance !== undefined ? formatRupiah(selectedKasbon.remaining_balance) : formatRupiah(selectedKasbon.amount)}
+                    </Text>
+                    <Text style={styles.modalStatTileLbl}>Sisa Tagihan</Text>
                   </View>
                 </View>
 
-                {/* TIMELINE PROGRES VERTIKAL LENGKAP */}
-                <View style={styles.verticalTimelineCard}>
-                  <Text style={styles.verticalTimelineTitle}>Progres Pengajuan & Pemotongan</Text>
+                {/* RINCIAN PEMBAYARAN & RIWAYAT POTONGAN PAYROLL */}
+                {(() => {
+                  const isCompleted = selectedKasbon.status === 'completed' || selectedKasbon.status === 'paid' || selectedKasbon.status === 'lunas';
+                  const totalTenor = Math.max(1, Number(selectedKasbon.installment_count) || 1);
+                  const remBal = selectedKasbon.remaining_balance !== undefined ? Number(selectedKasbon.remaining_balance) : Number(selectedKasbon.amount);
+                  const paidDiff = Math.max(0, Number(selectedKasbon.amount) - remBal);
+                  const monthlyNominal = Number(selectedKasbon.monthly_deduction) > 0
+                    ? Number(selectedKasbon.monthly_deduction)
+                    : Math.round(Number(selectedKasbon.amount) / totalTenor);
 
-                  {(() => {
-                    const st = (selectedKasbon.status || '').toLowerCase();
-                    const isPending = st === 'pending' || st === 'menunggu';
-                    const isActive = st === 'active' || st === 'approved' || st === 'berjalan' || st === 'disetujui';
-                    const isCompleted = st === 'completed' || st === 'paid' || st === 'lunas' || st === 'selesai';
-                    const isRejected = st === 'rejected' || st === 'ditolak' || st === 'cancelled' || st === 'dibatalkan';
+                  let paidCount = 0;
+                  if (isCompleted) {
+                    paidCount = totalTenor;
+                  } else if (Number(selectedKasbon.paid_installments_count) > 0) {
+                    paidCount = Number(selectedKasbon.paid_installments_count);
+                  } else if (selectedKasbon.payments && selectedKasbon.payments.length > 0) {
+                    paidCount = selectedKasbon.payments.length;
+                  } else if (monthlyNominal > 0 && paidDiff > 0) {
+                    paidCount = Math.min(totalTenor, Math.round(paidDiff / monthlyNominal));
+                  }
 
-                    return (
-                      <View style={styles.vStepperWrapper}>
-                        {/* Step 1: Pengajuan */}
-                        <View style={styles.vStepRow}>
-                          <View style={styles.vStepIndicatorCol}>
-                            <View style={[styles.vStepDot, styles.vStepDotDone]}>
-                              <MaterialIcons name="check" size={14} color="#ffffff" />
-                            </View>
-                            <View style={[styles.vStepLine, (isActive || isCompleted || isPending) && styles.vStepLineDone]} />
-                          </View>
-                          <View style={styles.vStepContent}>
-                            <Text style={styles.vStepTitle}>Pengajuan Kasbon Terkirim</Text>
-                            <Text style={styles.vStepDate}>{formatDate(selectedKasbon.created_at)}</Text>
-                            <Text style={styles.vStepDesc}>
-                              Pengajuan pinjaman {formatRupiah(selectedKasbon.amount)} diajukan untuk tenor {selectedKasbon.installment_count} bulan.
-                            </Text>
-                          </View>
-                        </View>
+                  const displayPayments: KasbonPayment[] = (selectedKasbon.payments && selectedKasbon.payments.length > 0)
+                    ? selectedKasbon.payments
+                    : Array.from({ length: paidCount }, (_, idx) => ({
+                      id: idx + 1,
+                      amount: monthlyNominal,
+                      notes: `Potongan Payroll Slip Gaji (Bulan ${idx + 1})`,
+                      payment_date: selectedKasbon.updated_at || selectedKasbon.loan_date || selectedKasbon.created_at,
+                    }));
 
-                        {/* Step 2: Review & Master Potongan Akuntansi */}
-                        <View style={styles.vStepRow}>
-                          <View style={styles.vStepIndicatorCol}>
-                            <View style={[
-                              styles.vStepDot,
-                              isRejected
-                                ? styles.vStepDotRejected
-                                : (isActive || isCompleted ? styles.vStepDotDone : styles.vStepDotActive)
-                            ]}>
-                              {isRejected ? (
-                                <MaterialIcons name="close" size={14} color="#ffffff" />
-                              ) : (isActive || isCompleted) ? (
-                                <MaterialIcons name="check" size={14} color="#ffffff" />
-                              ) : (
-                                <MaterialIcons name="hourglass-top" size={14} color="#ffffff" />
-                              )}
-                            </View>
-                            <View style={[styles.vStepLine, (isActive || isCompleted) ? styles.vStepLineDone : styles.vStepLinePending]} />
-                          </View>
-                          <View style={styles.vStepContent}>
-                            <Text style={styles.vStepTitle}>Verifikasi Akuntansi & Master Potongan</Text>
-                            <Text style={styles.vStepDate}>
-                              {selectedKasbon.approved_at ? formatDate(selectedKasbon.approved_at) : (isPending ? 'Dalam Proses' : '-')}
-                            </Text>
-                            <Text style={styles.vStepDesc}>
-                              {isRejected
-                                ? (selectedKasbon.approval_notes || 'Pengajuan ditolak oleh pihak akuntansi/HRD.')
-                                : (isActive || isCompleted)
-                                  ? `Disetujui. Besaran potongan: ${formatRupiah(selectedKasbon.monthly_deduction)}/bulan telah didaftarkan ke master potongan.`
-                                  : 'Tim Akuntansi sedang meninjau pengajuan dan menentukan besaran potongan gaji melalui web portal.'}
-                            </Text>
-                          </View>
-                        </View>
-
-                        {/* Step 3: Pemotongan Slip Gaji */}
-                        <View style={styles.vStepRow}>
-                          <View style={styles.vStepIndicatorCol}>
-                            <View style={[
-                              styles.vStepDot,
-                              isCompleted
-                                ? styles.vStepDotDone
-                                : (isActive ? styles.vStepDotActive : styles.vStepDotPending)
-                            ]}>
-                              {isCompleted ? (
-                                <MaterialIcons name="check" size={14} color="#ffffff" />
-                              ) : isActive ? (
-                                <MaterialIcons name="payments" size={14} color="#ffffff" />
-                              ) : (
-                                <MaterialIcons name="circle" size={10} color="#94a3b8" />
-                              )}
-                            </View>
-                            <View style={[styles.vStepLine, isCompleted ? styles.vStepLineDone : styles.vStepLinePending]} />
-                          </View>
-                          <View style={styles.vStepContent}>
-                            <Text style={styles.vStepTitle}>Pemotongan Gaji Bulanan</Text>
-                            <Text style={styles.vStepDate}>
-                              {isActive ? 'Aktif Berjalan' : (isCompleted ? 'Selesai' : 'Belum Berjalan')}
-                            </Text>
-                            <Text style={styles.vStepDesc}>
-                              {isCompleted
-                                ? 'Seluruh cicilan kasbon telah selesai dipotong dari slip gaji.'
-                                : isActive
-                                  ? `Cicilan aktif dipotong sebesar ${formatRupiah(selectedKasbon.monthly_deduction)} pada setiap periode slip gaji.`
-                                  : 'Pemotongan akan aktif otomatis setelah disetujui oleh akuntansi.'}
-                            </Text>
-                          </View>
-                        </View>
-
-                        {/* Step 4: Lunas Selesai */}
-                        <View style={styles.vStepRow}>
-                          <View style={styles.vStepIndicatorCol}>
-                            <View style={[
-                              styles.vStepDot,
-                              isCompleted ? styles.vStepDotDone : styles.vStepDotPending
-                            ]}>
-                              <MaterialIcons name="verified" size={14} color={isCompleted ? '#ffffff' : '#94a3b8'} />
-                            </View>
-                          </View>
-                          <View style={styles.vStepContent}>
-                            <Text style={styles.vStepTitle}>Kasbon Lunas</Text>
-                            <Text style={styles.vStepDate}>
-                              {isCompleted ? 'Lunas Sepenuhnya' : `Target: ${selectedKasbon.installment_count} Kali Angsuran`}
-                            </Text>
-                            <Text style={styles.vStepDesc}>
-                              {isCompleted
-                                ? 'Status pinjaman telah lunas dan saldo tanggungan bersih.'
-                                : 'Kasbon akan berstatus lunas setelah seluruh angsuran terpenuhi.'}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
-                    );
-                  })()}
-                </View>
-
-                {/* TRACKER ANGSURAN BULANAN */}
-                <View style={styles.installmentTrackerCard}>
-                  <Text style={styles.installmentTrackerTitle}>Progres Tenor Cicilan</Text>
-                  <View style={styles.tenorPillsGrid}>
-                    {Array.from({ length: Math.max(1, selectedKasbon.installment_count) }, (_, idx) => {
-                      const installmentNo = idx + 1;
-                      const isCompleted = selectedKasbon.status === 'completed' || selectedKasbon.status === 'paid' || selectedKasbon.status === 'lunas';
-                      const paidCount = selectedKasbon.paid_installments_count ?? (isCompleted ? selectedKasbon.installment_count : 0);
-                      const isPaid = installmentNo <= paidCount;
-                      const isCurrent = installmentNo === paidCount + 1 && (selectedKasbon.status === 'active' || selectedKasbon.status === 'approved');
-
-                      return (
-                        <View
-                          key={installmentNo}
-                          style={[
-                            styles.tenorPill,
-                            isPaid && styles.tenorPillPaid,
-                            isCurrent && styles.tenorPillCurrent,
-                          ]}
-                        >
-                          <View style={styles.tenorPillHeader}>
-                            <Text style={[styles.tenorPillNumber, (isPaid || isCurrent) && styles.tenorPillTextHighlight]}>
-                              Bulan {installmentNo}
-                            </Text>
-                            {isPaid ? (
-                              <MaterialIcons name="check-circle" size={14} color="#166534" />
-                            ) : isCurrent ? (
-                              <MaterialIcons name="timelapse" size={14} color="#1d4ed8" />
-                            ) : (
-                              <MaterialIcons name="radio-button-unchecked" size={14} color="#94a3b8" />
-                            )}
-                          </View>
-                          <Text style={[styles.tenorPillStatus, isPaid && { color: '#166534' }, isCurrent && { color: '#1d4ed8' }]}>
-                            {isPaid ? 'Lunas' : isCurrent ? 'Bulan Ini' : 'Menunggu'}
+                  return (
+                    <>
+                      {/* RINCIAN PEMBAYARAN / PROGRES TENOR CICILAN PER BULAN */}
+                      <View style={styles.installmentTrackerCard}>
+                        <View style={styles.sectionHeaderRow}>
+                          <Text style={styles.modalSectionTitle}>
+                            Rincian Pembayaran ({paidCount}/{selectedKasbon.installment_count} Bulan)
+                          </Text>
+                          <Text style={styles.trackerSummaryBadge}>
+                            {isCompleted ? 'LUNAS' : `Sisa ${Math.max(0, selectedKasbon.installment_count - paidCount)} Bln`}
                           </Text>
                         </View>
-                      );
-                    })}
-                  </View>
-                </View>
 
-                {/* INFORMASI LENGKAP */}
-                <View style={styles.detailInfoBox}>
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoRowKey}>Alasan Pengajuan</Text>
-                    <Text style={styles.detailNotesText}>{selectedKasbon.notes || '-'}</Text>
-                  </View>
-                  {selectedKasbon.approval_notes ? (
-                    <View style={[styles.infoRow, { marginTop: 6 }]}>
-                      <Text style={[styles.infoRowKey, { color: theme.colors.primary }]}>Catatan Akuntansi</Text>
-                      <Text style={styles.detailNotesText}>{selectedKasbon.approval_notes}</Text>
+                        <View style={styles.tenorPillsGrid}>
+                          {Array.from({ length: totalTenor }, (_, idx) => {
+                            const installmentNo = idx + 1;
+                            const isPaid = installmentNo <= paidCount;
+                            const isCurrent = installmentNo === paidCount + 1 && (selectedKasbon.status === 'active' || selectedKasbon.status === 'approved');
+
+                            return (
+                              <View
+                                key={installmentNo}
+                                style={[
+                                  styles.tenorPill,
+                                  isPaid && styles.tenorPillPaid,
+                                  isCurrent && styles.tenorPillCurrent,
+                                ]}
+                              >
+                                <View style={styles.tenorPillHeader}>
+                                  <Text style={[styles.tenorPillNumber, (isPaid || isCurrent) && styles.tenorPillTextHighlight]}>
+                                    Bulan {installmentNo}
+                                  </Text>
+                                  {isPaid ? (
+                                    <MaterialIcons name="check-circle" size={15} color="#166534" />
+                                  ) : isCurrent ? (
+                                    <MaterialIcons name="timelapse" size={15} color="#1d4ed8" />
+                                  ) : (
+                                    <MaterialIcons name="radio-button-unchecked" size={15} color="#94a3b8" />
+                                  )}
+                                </View>
+                                <Text style={styles.tenorPillAmount}>{formatRupiah(monthlyNominal)}</Text>
+                                <Text
+                                  style={[
+                                    styles.tenorPillStatus,
+                                    isPaid && { color: '#166534', fontWeight: 'bold' },
+                                    isCurrent && { color: '#1d4ed8', fontWeight: 'bold' },
+                                  ]}
+                                >
+                                  {isPaid ? 'Lunas (Payroll)' : isCurrent ? 'Jatuh Tempo' : 'Belum Terpotong'}
+                                </Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </View>
+
+                      {/* DAFTAR RIWAYAT TRANSAKSI PAYMENTS DARI DATABASE */}
+                      <Text style={styles.modalSectionTitle}>
+                        Riwayat Potongan Payroll ({displayPayments.length} Terbayar)
+                      </Text>
+
+                      {displayPayments.length > 0 ? (
+                        displayPayments.map((p: KasbonPayment, idx: number) => (
+                          <View key={p.id || idx} style={styles.paymentItemRow}>
+                            <View style={styles.paymentNumCircle}>
+                              <Text style={styles.paymentNumText}>{idx + 1}</Text>
+                            </View>
+                            <View style={{ flex: 1, marginLeft: 10 }}>
+                              <Text style={styles.paymentDateText}>{formatDate(p.payment_date || p.created_at)}</Text>
+                              <Text style={styles.paymentNotesText}>{p.notes || `Potongan Gaji Payroll (Bulan ${idx + 1})`}</Text>
+                            </View>
+                            <View style={{ alignItems: 'flex-end' }}>
+                              <Text style={styles.paymentAmountText}>{formatRupiah(p.amount)}</Text>
+                              <View style={styles.paymentPaidPill}>
+                                <Text style={styles.paymentPaidPillText}>Lunas</Text>
+                              </View>
+                            </View>
+                          </View>
+                        ))
+                      ) : (
+                        <View style={styles.noPaymentsBox}>
+                          <MaterialIcons name="schedule" size={24} color="#94a3b8" />
+                          <Text style={styles.noPaymentsTitle}>Belum Ada Pembayaran</Text>
+                          <Text style={styles.noPaymentsDesc}>
+                            Potongan angsuran akan dimulai pada siklus penggajian payroll berikutnya.
+                          </Text>
+                        </View>
+                      )}
+                    </>
+                  );
+                })()}
+
+                {/* CATATAN KEPERLUAN PENGAJUAN */}
+                {selectedKasbon.notes ? (
+                  <View style={{ marginTop: 14 }}>
+                    <Text style={styles.modalSectionTitle}>Keperluan / Catatan</Text>
+                    <View style={styles.detailNotesCard}>
+                      <Text style={styles.detailNotesContent}>"{selectedKasbon.notes}"</Text>
                     </View>
-                  ) : null}
-                  {selectedKasbon.remaining_balance !== undefined ? (
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoRowKey}>Sisa Tagihan</Text>
-                      <Text style={[styles.infoRowVal, { fontWeight: 'bold', color: '#dc2626' }]}>
-                        {formatRupiah(selectedKasbon.remaining_balance)}
+                  </View>
+                ) : null}
+
+                {/* CATATAN PERSONALIA */}
+                {selectedKasbon.reason || selectedKasbon.approval_notes ? (
+                  <View style={{ marginTop: 14 }}>
+                    <Text style={styles.modalSectionTitle}>Catatan Personalia</Text>
+                    <View style={[styles.detailNotesCard, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
+                      <Text style={[styles.detailNotesContent, { color: '#b91c1c' }]}>
+                        {selectedKasbon.reason || selectedKasbon.approval_notes}
                       </Text>
                     </View>
-                  ) : null}
-                </View>
-
-                {/* CANCEL BUTTON FOR PENDING */}
-                {(selectedKasbon.status === 'pending' || selectedKasbon.status === 'menunggu') ? (
-                  <TouchableOpacity
-                    style={[styles.btnCancelFull, cancellingId === selectedKasbon.id && styles.btnDisabled]}
-                    onPress={() => handleCancelKasbon(selectedKasbon.id)}
-                    disabled={cancellingId === selectedKasbon.id}
-                  >
-                    <MaterialIcons name="delete-outline" size={20} color="#dc2626" style={{ marginRight: 6 }} />
-                    <Text style={styles.btnCancelFullText}>Batalkan Pengajuan Ini</Text>
-                  </TouchableOpacity>
+                  </View>
                 ) : null}
+
+                <View style={{ height: 40 }} />
               </ScrollView>
             ) : null}
           </View>
@@ -1151,318 +1217,399 @@ export default function KasbonScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  rootWrapper: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#f1f5f9',
   },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  summaryCard: {
+
+  // Header Hero
+  headerHeroContainer: {
     backgroundColor: theme.colors.primary,
-    borderRadius: 16,
-    padding: 18,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    elevation: 6,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    marginBottom: 16,
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
   },
-  summaryHeader: {
+  headerTopBar: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  summaryHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  summaryIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  summaryHeaderTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#ffffff',
-  },
-  summaryHeaderSub: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginTop: 2,
-  },
-  refreshIconBtn: {
-    padding: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  summaryDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    marginVertical: 14,
-  },
-  summaryBody: {
     alignItems: 'center',
     marginBottom: 14,
   },
-  summaryCol: {
+  backButton: {
+    width: 38,
+    height: 38,
+    justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: -4,
   },
-  summaryLabel: {
+  headerSubtitle: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.85)',
-    marginBottom: 4,
+    color: 'rgba(255, 255, 255, 0.75)',
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
-  summaryMainValue: {
-    fontSize: 26,
+  headerTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#ffffff',
   },
-  summaryGrid: {
+  headerActionPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(0, 0, 0, 0.15)',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  summaryGridItem: {
+  headerActionPillText: {
+    fontSize: 12,
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+
+  // Elevated Score Hero Card
+  scoreHeroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 14,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+  },
+  scoreHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  gaugeOuter: {
+    width: 90,
+    height: 86,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 6,
+  },
+  gaugeMainText: {
+    fontSize: 13,
+    fontWeight: '900',
+    marginTop: 3,
+  },
+  gaugeScale: {
+    fontSize: 7.5,
+    fontWeight: '800',
+    color: '#94a3b8',
+    marginTop: 2,
+    letterSpacing: 0.4,
+  },
+  heroRightContent: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  heroPredicatePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  heroPredicateText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  heroBalanceMain: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0f172a',
+  },
+  heroPeriodNotice: {
+    fontSize: 10.5,
+    color: '#64748b',
+    marginBottom: 8,
+  },
+  heroMiniCardsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  heroMiniCard: {
     flex: 1,
     alignItems: 'center',
   },
-  summarySubDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  summarySubLabel: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.75)',
-    marginBottom: 2,
-  },
-  summarySubValue: {
-    fontSize: 13,
+  heroMiniCardVal: {
+    fontSize: 10.5,
     fontWeight: 'bold',
-    color: '#ffffff',
-  },
-  summaryPendingBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.22)',
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginTop: 10,
-  },
-  pendingBadgeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FCD34D',
-    marginRight: 10,
-  },
-  pendingBannerTitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#FEF08A',
-  },
-  pendingBannerDesc: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.82)',
+    color: '#0f172a',
     marginTop: 1,
   },
-  btnPrimaryAction: {
-    backgroundColor: '#059669', // Emerald Green
-    borderRadius: 14,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-    shadowColor: '#059669',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
+  heroMiniCardLbl: {
+    fontSize: 8.5,
+    color: '#64748b',
+    fontWeight: '500',
   },
-  btnIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+
+  // Segmented Tabs
+  tabsContainer: {
+    flexDirection: 'row',
     backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 4,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+  },
+  tabItem: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  tabItemActive: {
+    backgroundColor: '#eff6ff',
+  },
+  tabLabel: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  tabLabelActive: {
+    color: theme.colors.primary,
+    fontWeight: 'bold',
+  },
+
+  // Content Scroll
+  contentScroll: {
+    flex: 1,
+  },
+  contentScrollInner: {
+    padding: 16,
+    flexGrow: 1,
+  },
+  centerLoading: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    paddingVertical: 60,
   },
-  btnPrimaryActionTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#ffffff',
+  loadingText: {
+    fontSize: 13,
+    color: '#64748b',
+    marginTop: 12,
+    fontWeight: '500',
   },
-  btnPrimaryActionSub: {
-    fontSize: 12,
-    color: '#d1fae5',
-    marginTop: 2,
-  },
-  // LOCKED KASBON BANNER
+
+  // Lock Banner
   lockedKasbonBanner: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#FEF3C7',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1.5,
-    borderColor: '#FCD34D',
+    alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#fde68a',
   },
   lockedIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#FDE68A',
-    alignItems: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fef3c7',
     justifyContent: 'center',
-    marginRight: 12,
+    alignItems: 'center',
   },
   lockedBannerTitle: {
-    fontSize: 14.5,
+    fontSize: 13.5,
     fontWeight: 'bold',
     color: '#92400e',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   lockedBannerDesc: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: '#78350f',
-    lineHeight: 17,
+    lineHeight: 16,
   },
+
+  // Apply Button Card
+  btnApplyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: '#bfdbfe',
+    elevation: 2,
+  },
+  btnApplyIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#eff6ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  btnApplyTitle: {
+    fontSize: 14.5,
+    fontWeight: 'bold',
+    color: theme.colors.primary,
+  },
+  btnApplySub: {
+    fontSize: 11.5,
+    color: '#64748b',
+    marginTop: 1,
+  },
+  cardActionArrow: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: theme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 14,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: theme.colors.text,
+    color: '#0f172a',
   },
   sectionSubtitle: {
-    fontSize: 12,
-    color: theme.colors.textMuted,
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
   },
-  filterTabsScroll: {
-    marginBottom: 14,
-  },
-  filterTabsContainer: {
-    paddingRight: 16,
-  },
-  filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: '#E2E8F0',
-    marginRight: 8,
-  },
-  filterChipActive: {
-    backgroundColor: theme.colors.primary,
-  },
-  filterChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  filterChipTextActive: {
-    color: '#ffffff',
-  },
-  centerLoading: {
-    paddingVertical: 40,
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 13,
-    color: theme.colors.textMuted,
-  },
-  emptyState: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 32,
-    alignItems: 'center',
+  countBadge: {
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginVertical: 12,
+    borderColor: '#bfdbfe',
   },
-  emptyTitle: {
-    fontSize: 16,
+  countBadgeText: {
+    fontSize: 11,
     fontWeight: 'bold',
-    color: theme.colors.text,
-    marginTop: 12,
+    color: theme.colors.primary,
   },
-  emptySubtitle: {
-    fontSize: 13,
-    color: theme.colors.textMuted,
-    textAlign: 'center',
-    marginTop: 6,
-    lineHeight: 18,
-  },
-  listContainer: {
-    gap: 14,
-  },
-  kasbonCard: {
+
+  // Card Item
+  cardItem: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
+    marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#e2e8f0',
+    elevation: 3,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 5,
-    elevation: 2,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
   },
-  cardTopRow: {
+  cardHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
   },
-  cardNominalWrap: {},
-  cardNominalLabel: {
-    fontSize: 11,
-    color: theme.colors.textMuted,
+  cardMonthTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
   },
-  cardNominalValue: {
-    fontSize: 18,
+  cardMonthText: {
+    fontSize: 16,
     fontWeight: 'bold',
-    color: theme.colors.text,
+    color: '#0f172a',
+    marginRight: 6,
+  },
+  cardYearText: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  cardWorkingDaysText: {
+    fontSize: 12,
+    color: '#64748b',
     marginTop: 2,
   },
-  badge: {
+  statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 12,
+    borderWidth: 1,
   },
-  badgeText: {
-    fontSize: 11,
+  statusPillText: {
+    fontSize: 10.5,
     fontWeight: 'bold',
   },
-  // CARD TIMELINE STYLES
-  cardTimelineContainer: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
+
+  // Nominal Banner
+  scoreBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+    marginBottom: 12,
+  },
+  scoreBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  scoreBigNum: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0f172a',
+  },
+  scoreBannerLbl: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: '#64748b',
+    letterSpacing: 0.5,
+  },
+  scoreBannerPredicate: {
+    fontSize: 12.5,
+    fontWeight: 'bold',
+    color: theme.colors.primary,
+    marginTop: 1,
+  },
+
+  // Card Stepper Timeline
+  cardTimelineContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 10,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: '#f1f5f9',
   },
   cardTimelineStepsRow: {
     flexDirection: 'row',
@@ -1471,69 +1618,68 @@ const styles = StyleSheet.create({
   },
   timelineStepItem: {
     alignItems: 'center',
-    width: 58,
+    width: 60,
   },
   stepCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 4,
   },
   stepCircleDone: {
     backgroundColor: '#10b981',
   },
-  stepCircleCurrent: {
-    backgroundColor: '#FEF3C7',
-    borderWidth: 1.5,
-    borderColor: '#f59e0b',
+  stepCircleActive: {
+    backgroundColor: '#f59e0b',
   },
   stepCirclePending: {
-    backgroundColor: '#E2E8F0',
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+  },
+  stepNumberPending: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#94a3b8',
   },
   stepLabelDone: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: 'bold',
-    color: '#059669',
+    color: '#10b981',
     textAlign: 'center',
   },
-  stepLabelCurrent: {
-    fontSize: 9.5,
+  stepLabelActive: {
+    fontSize: 10,
     fontWeight: 'bold',
-    color: '#b45309',
+    color: '#f59e0b',
     textAlign: 'center',
   },
   stepLabelPending: {
-    fontSize: 9.5,
+    fontSize: 10,
     color: '#94a3b8',
     textAlign: 'center',
   },
-  stepConnectorLine: {
+  timelineConnector: {
     flex: 1,
     height: 2,
-    marginTop: -14,
-    marginHorizontal: 2,
+    backgroundColor: '#e2e8f0',
+    marginBottom: 16,
   },
-  stepConnectorDone: {
+  timelineConnectorDone: {
     backgroundColor: '#10b981',
-  },
-  stepConnectorActive: {
-    backgroundColor: '#3b82f6',
-  },
-  stepConnectorPending: {
-    backgroundColor: '#E2E8F0',
   },
   cardInstallmentProgressWrap: {
     marginTop: 10,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
+    borderTopColor: '#f1f5f9',
   },
   progressBarBg: {
     height: 6,
+    backgroundColor: '#f1f5f9',
     borderRadius: 3,
-    backgroundColor: '#E2E8F0',
     overflow: 'hidden',
   },
   progressBarFill: {
@@ -1544,244 +1690,323 @@ const styles = StyleSheet.create({
   progressTextRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 5,
+    marginTop: 4,
   },
   progressCountText: {
     fontSize: 10.5,
+    color: '#64748b',
     fontWeight: '600',
-    color: '#334155',
   },
   progressBalanceText: {
     fontSize: 10.5,
     fontWeight: 'bold',
-    color: '#059669',
+    color: '#0f172a',
   },
   cardRejectedTimelineBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEE2E2',
-    padding: 10,
-    borderRadius: 10,
-    marginBottom: 12,
+    backgroundColor: '#fef2f2',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 10,
   },
   cardRejectedTimelineText: {
-    fontSize: 11.5,
+    fontSize: 11,
     color: '#dc2626',
     marginLeft: 6,
-    flex: 1,
   },
-  cardDetailsRow: {
+
+  // 4 Mini Stat Badges
+  statGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  statCell: {
+    width: '50%',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F8FAFC',
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+  },
+  statCellVal: {
+    fontSize: 11.5,
+    fontWeight: 'bold',
+    color: '#0f172a',
+  },
+  statCellLbl: {
+    fontSize: 9.5,
+    color: '#64748b',
+  },
+
+  notesBox: {
+    flexDirection: 'row',
+    backgroundColor: '#f8fafc',
     borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 10,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  cardDetailCol: {
-    alignItems: 'center',
-  },
-  detailColLabel: {
+  notesBoxTitle: {
     fontSize: 10,
-    color: theme.colors.textMuted,
-    marginBottom: 2,
+    fontWeight: 'bold',
+    color: '#475569',
   },
-  detailColValue: {
+  notesBoxContent: {
+    fontSize: 11.5,
+    color: '#334155',
+    fontStyle: 'italic',
+    marginTop: 1,
+  },
+
+  // Action Row
+  cardActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  btnCancelPending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fee2e2',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  btnCancelPendingText: {
+    fontSize: 11.5,
+    fontWeight: 'bold',
+    color: '#dc2626',
+  },
+  cardActionText: {
     fontSize: 12,
     fontWeight: '600',
-    color: theme.colors.text,
-  },
-  detailColDivider: {
-    width: 1,
-    height: 22,
-    backgroundColor: '#CBD5E1',
-  },
-  cardNotesBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFBEB',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginBottom: 10,
-  },
-  cardNotesText: {
-    fontSize: 12,
-    color: '#92400e',
-    marginLeft: 6,
-    flex: 1,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-    paddingTop: 10,
-  },
-  tapDetailText: {
-    fontSize: 11,
-    color: theme.colors.textMuted,
-  },
-  cardFooterRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  btnSmallCancel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    color: theme.colors.primary,
     marginRight: 8,
   },
-  btnSmallCancelText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#dc2626',
-    marginLeft: 2,
-  },
-  // MODAL STYLES
-  modalOverlay: {
+
+  // Modal / Bottom Sheet
+  modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'flex-end',
   },
   modalSheet: {
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingBottom: 24,
   },
-  modalHeader: {
+  modalGrabHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#cbd5e1',
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  modalHeadBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: '#f1f5f9',
   },
-  modalTitle: {
-    fontSize: 18,
+  modalHeadTitle: {
+    fontSize: 17,
     fontWeight: 'bold',
-    color: theme.colors.text,
+    color: '#0f172a',
   },
-  modalSubtitle: {
+  modalHeadSubtitle: {
     fontSize: 12,
-    color: theme.colors.textMuted,
+    color: '#64748b',
+    marginTop: 1,
+  },
+  modalCloseCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBodyScroll: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+  },
+  modalScoreHero: {
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  modalScoreLarge: {
+    fontSize: 26,
+    fontWeight: '900',
+  },
+  modalPredBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 14,
+  },
+  modalPredBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  modalStatusNote: {
+    fontSize: 11.5,
+    color: '#64748b',
+    marginTop: 6,
+  },
+  modalSectionTitle: {
+    fontSize: 13.5,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginVertical: 10,
+  },
+  modalStatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    backgroundColor: '#f8fafc',
+    borderRadius: 16,
+    padding: 8,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  modalStatTile: {
+    width: '33.33%',
+    padding: 8,
+    alignItems: 'center',
+  },
+  modalStatTileVal: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    textAlign: 'center',
+  },
+  modalStatTileLbl: {
+    fontSize: 10,
+    color: '#64748b',
     marginTop: 2,
   },
-  modalCloseBtn: {
-    padding: 6,
-    borderRadius: 20,
-    backgroundColor: '#F1F5F9',
-  },
-  modalFormBody: {
-    padding: 20,
-  },
+
+  // Form Controls in Modal
   formGroup: {
-    marginBottom: 18,
+    marginBottom: 14,
   },
   formLabel: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: 'bold',
-    color: theme.colors.text,
-    marginBottom: 8,
+    color: '#1e293b',
+    marginBottom: 6,
   },
   currencyInputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
     borderRadius: 12,
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
   },
   currencyPrefix: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: theme.colors.primary,
-    marginRight: 8,
+    marginRight: 6,
   },
   currencyInput: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: theme.colors.text,
-    paddingVertical: 12,
+    color: '#0f172a',
+    paddingVertical: 10,
   },
   quickAmountRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 10,
+    marginTop: 8,
   },
   quickAmountChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    marginRight: 6,
+    marginBottom: 6,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#e2e8f0',
   },
   quickAmountChipActive: {
-    backgroundColor: '#DBEAFE',
+    backgroundColor: theme.colors.primary,
     borderColor: theme.colors.primary,
   },
   quickAmountChipText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
     color: '#475569',
   },
   quickAmountChipTextActive: {
-    color: theme.colors.primary,
-    fontWeight: 'bold',
+    color: '#ffffff',
   },
   tenorGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
   },
   tenorChip: {
-    paddingHorizontal: 14,
+    width: (width - 64) / 4,
+    backgroundColor: '#f1f5f9',
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    marginRight: 6,
+    marginBottom: 6,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#e2e8f0',
   },
   tenorChipActive: {
     backgroundColor: theme.colors.primary,
     borderColor: theme.colors.primary,
   },
   tenorChipText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#475569',
   },
   tenorChipTextActive: {
     color: '#ffffff',
+    fontWeight: 'bold',
   },
   simulationCard: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#eff6ff',
     borderRadius: 14,
-    padding: 14,
+    padding: 12,
+    marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
-    marginBottom: 18,
+    borderColor: '#bfdbfe',
   },
   simulationHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   simulationTitle: {
-    fontSize: 13.5,
+    fontSize: 12.5,
     fontWeight: 'bold',
     color: theme.colors.primary,
     marginLeft: 6,
@@ -1789,214 +2014,103 @@ const styles = StyleSheet.create({
   simulationRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginVertical: 4,
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#dbeafe',
   },
   simulationLabel: {
     fontSize: 12,
-    color: '#334155',
+    color: '#475569',
   },
   simulationValue: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: 'bold',
     color: theme.colors.primary,
   },
   accountingNoticeBox: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#DBEAFE',
-    borderRadius: 8,
-    padding: 10,
     marginTop: 8,
   },
   simulationNotes: {
-    fontSize: 11.5,
-    color: '#1e3a8a',
     flex: 1,
+    fontSize: 11,
+    color: '#1e40af',
     lineHeight: 16,
   },
   notesTextarea: {
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
     borderRadius: 12,
-    backgroundColor: '#F8FAFC',
-    padding: 12,
-    fontSize: 14,
-    color: theme.colors.text,
+    padding: 10,
+    fontSize: 13,
+    color: '#0f172a',
     minHeight: 80,
   },
   btnSubmitForm: {
-    backgroundColor: theme.colors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 6,
-    marginBottom: 20,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginTop: 10,
+    elevation: 3,
   },
   btnSubmitText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#ffffff',
   },
   btnDisabled: {
     opacity: 0.5,
   },
-  // DETAIL MODAL & VERTICAL TIMELINE STYLES
-  detailStatusBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 12,
-    marginBottom: 14,
-  },
-  detailStatusText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginLeft: 6,
-  },
-  detailHighlightCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 16,
-  },
-  detailHighlightCol: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  detailHighlightDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: '#CBD5E1',
-  },
-  detailHighlightLabel: {
-    fontSize: 11,
-    color: theme.colors.textMuted,
-    marginBottom: 3,
-  },
-  detailHighlightVal: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: theme.colors.text,
-  },
-  verticalTimelineCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    padding: 16,
-    marginBottom: 16,
-  },
-  verticalTimelineTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: theme.colors.text,
-    marginBottom: 14,
-  },
-  vStepperWrapper: {
-    paddingLeft: 4,
-  },
-  vStepRow: {
-    flexDirection: 'row',
-  },
-  vStepIndicatorCol: {
-    alignItems: 'center',
-    width: 28,
-  },
-  vStepDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  vStepDotDone: {
-    backgroundColor: '#10b981',
-  },
-  vStepDotActive: {
-    backgroundColor: '#3b82f6',
-  },
-  vStepDotPending: {
-    backgroundColor: '#E2E8F0',
-  },
-  vStepDotRejected: {
-    backgroundColor: '#ef4444',
-  },
-  vStepLine: {
-    width: 2,
-    flex: 1,
-    minHeight: 34,
-    marginVertical: 4,
-  },
-  vStepLineDone: {
-    backgroundColor: '#10b981',
-  },
-  vStepLinePending: {
-    backgroundColor: '#E2E8F0',
-  },
-  vStepContent: {
-    flex: 1,
-    paddingLeft: 10,
-    paddingBottom: 16,
-  },
-  vStepTitle: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: theme.colors.text,
-  },
-  vStepDate: {
-    fontSize: 11,
-    color: theme.colors.textMuted,
-    marginTop: 1,
-    marginBottom: 3,
-  },
-  vStepDesc: {
-    fontSize: 12,
-    color: '#475569',
-    lineHeight: 16,
-  },
+
+  // Payment List in Detail Modal
   installmentTrackerCard: {
     backgroundColor: '#ffffff',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    padding: 16,
-    marginBottom: 16,
+    borderColor: '#e2e8f0',
+    padding: 12,
+    marginBottom: 14,
   },
-  installmentTrackerTitle: {
-    fontSize: 14,
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  trackerSummaryBadge: {
+    fontSize: 11,
     fontWeight: 'bold',
-    color: theme.colors.text,
-    marginBottom: 12,
+    color: theme.colors.primary,
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
   tenorPillsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    justifyContent: 'space-between',
   },
   tenorPill: {
-    width: '48%',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
+    width: '48.5%',
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
     padding: 10,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#e2e8f0',
+    marginBottom: 8,
   },
   tenorPillPaid: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#A7F3D0',
+    backgroundColor: '#ecfdf5',
+    borderColor: '#a7f3d0',
   },
   tenorPillCurrent: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#BFDBFE',
+    backgroundColor: '#eff6ff',
+    borderColor: '#bfdbfe',
   },
   tenorPillHeader: {
     flexDirection: 'row',
@@ -2005,57 +2119,124 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   tenorPillNumber: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
     color: '#475569',
   },
   tenorPillTextHighlight: {
     fontWeight: 'bold',
   },
+  tenorPillAmount: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginVertical: 2,
+  },
   tenorPillStatus: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748b',
     fontWeight: '500',
   },
-  detailInfoBox: {
-    backgroundColor: '#ffffff',
+  detailNotesCard: {
+    backgroundColor: '#f8fafc',
     borderRadius: 12,
-    padding: 14,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 10,
+    borderColor: '#e2e8f0',
   },
-  infoRow: {
-    paddingVertical: 6,
-  },
-  infoRowKey: {
-    fontSize: 12,
-    color: theme.colors.textMuted,
-    marginBottom: 2,
-  },
-  infoRowVal: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.text,
-  },
-  detailNotesText: {
-    fontSize: 13,
-    color: theme.colors.text,
+  detailNotesContent: {
+    fontSize: 12.5,
+    color: '#334155',
     lineHeight: 18,
   },
-  btnCancelFull: {
+  paymentItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
+    backgroundColor: '#f8fafc',
+    padding: 10,
     borderRadius: 12,
-    backgroundColor: '#FEE2E2',
-    marginTop: 10,
-    marginBottom: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  btnCancelFullText: {
+  paymentNumCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#eff6ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paymentNumText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: theme.colors.primary,
+  },
+  paymentDateText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#0f172a',
+  },
+  paymentNotesText: {
+    fontSize: 10.5,
+    color: '#64748b',
+  },
+  paymentAmountText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#059669',
+  },
+  paymentPaidPill: {
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+    marginTop: 2,
+  },
+  paymentPaidPillText: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: '#166534',
+  },
+  noPaymentsBox: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  noPaymentsTitle: {
     fontSize: 13,
     fontWeight: 'bold',
-    color: '#dc2626',
+    color: '#475569',
+    marginTop: 6,
+  },
+  noPaymentsDesc: {
+    fontSize: 11,
+    color: '#94a3b8',
+    textAlign: 'center',
+    marginTop: 2,
+    paddingHorizontal: 20,
+  },
+
+  // Empty State
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#334155',
+    marginTop: 12,
+  },
+  emptyDesc: {
+    fontSize: 12,
+    color: '#64748b',
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
   },
 });

@@ -1,33 +1,34 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
   ActivityIndicator,
-  Modal,
   Dimensions,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../../core/theme';
 import { useToast } from '../../../core/ToastContext';
 import { evaluasiService } from '../services/evaluasiService';
 import {
-  MonthlyKedisiplinan,
+  AnnualRekapData,
   KedisiplinanSummary,
   MonthDetailKedisiplinan,
-  AnnualRekapData,
-  TeamMemberKedisiplinan,
+  MonthlyKedisiplinan,
 } from '../types';
 
 const { width } = Dimensions.get('window');
 
-type ActiveTab = 'bulanan' | 'rekap_tahunan' | 'tim_cabang';
+type ActiveTab = 'bulanan' | 'rekap_tahunan';
 
 export default function EvaluasiScreen() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
 
@@ -51,15 +52,6 @@ export default function EvaluasiScreen() {
   // Data Rekap Tahunan
   const [annualRekap, setAnnualRekap] = useState<AnnualRekapData | null>(null);
 
-  // Data Tim Cabang
-  const [teamMonth, setTeamMonth] = useState<number>(new Date().getMonth() + 1);
-  const [teamList, setTeamList] = useState<TeamMemberKedisiplinan[]>([]);
-  const [teamTotal, setTeamTotal] = useState<number>(0);
-  const [teamApprovedCount, setTeamApprovedCount] = useState<number>(0);
-  const [isLoadingTeam, setIsLoadingTeam] = useState<boolean>(false);
-  const [selectedTeamMember, setSelectedTeamMember] = useState<TeamMemberKedisiplinan | null>(null);
-  const [teamDetailModalVisible, setTeamDetailModalVisible] = useState<boolean>(false);
-
   const availableYears = useMemo(() => {
     return [currentYear, currentYear - 1, currentYear - 2];
   }, [currentYear]);
@@ -77,7 +69,7 @@ export default function EvaluasiScreen() {
       setSummary(res.summary);
       setMonthlyList(res.data || []);
 
-      // Fetch rekap tahunan silently in background
+      // Silently fetch rekap tahunan
       evaluasiService.getAnnualRekap(selectedYear)
         .then(rekapRes => setAnnualRekap(rekapRes))
         .catch(() => {});
@@ -97,30 +89,17 @@ export default function EvaluasiScreen() {
     loadData();
   }, [loadData]);
 
-  // Load Team Data when switching to team tab or changing teamMonth
-  const loadTeamData = useCallback(async () => {
-    setIsLoadingTeam(true);
-    try {
-      const res = await evaluasiService.getTeamKedisiplinan(selectedYear, teamMonth);
-      setTeamList(res.data || []);
-      setTeamTotal(res.total || 0);
-      setTeamApprovedCount(res.approved_count || 0);
-    } catch {
-      // Graceful fallback if user doesn't have team data permission
-      setTeamList([]);
-    } finally {
-      setIsLoadingTeam(false);
+  // Detail Modal Bulanan
+  const handleOpenMonthDetail = async (month: number, isApproved = true) => {
+    if (!isApproved) {
+      showToast({
+        title: 'Dalam Masa Pemantauan',
+        message: 'Bulan ini sedang masa penilaian dan pemantauan pekerjaan Anda oleh manajemen.',
+        type: 'info',
+      });
+      return;
     }
-  }, [selectedYear, teamMonth]);
 
-  useEffect(() => {
-    if (activeTab === 'tim_cabang') {
-      loadTeamData();
-    }
-  }, [activeTab, loadTeamData]);
-
-  // Handle open month detail modal
-  const handleOpenMonthDetail = async (month: number) => {
     setIsLoadingDetail(true);
     setDetailModalVisible(true);
     try {
@@ -138,7 +117,34 @@ export default function EvaluasiScreen() {
     }
   };
 
-  // Predicate Helpers
+  // Convert Predicate / Score to Star Count (1 - 5)
+  const getStarCount = (predicate: string = '', score: number = 0): number => {
+    const p = predicate.toLowerCase();
+    if (p.includes('sangat') || score >= 90) return 5;
+    if (p.includes('disiplin') && !p.includes('tidak') && !p.includes('kurang') && !p.includes('cukup')) return 4;
+    if (p.includes('cukup') || (score >= 70 && score < 80)) return 3;
+    if (p.includes('kurang') || (score >= 50 && score < 70)) return 2;
+    return 1;
+  };
+
+  // Render Stars Component
+  const renderStars = (starCount: number, size = 18, activeColor = '#f59e0b', inactiveColor = '#cbd5e1') => {
+    return (
+      <View style={styles.starsRow}>
+        {[1, 2, 3, 4, 5].map((i) => (
+          <MaterialIcons
+            key={i}
+            name={i <= starCount ? 'star' : 'star-border'}
+            size={size}
+            color={i <= starCount ? activeColor : inactiveColor}
+            style={{ marginHorizontal: 1 }}
+          />
+        ))}
+      </View>
+    );
+  };
+
+  // Predicate Theme Helper with modern pastel and vibrant contrast
   const getPredicateTheme = (predicate: string = '', score: number = 0) => {
     const p = predicate.toLowerCase();
     if (p.includes('sangat') || score >= 90) {
@@ -148,6 +154,8 @@ export default function EvaluasiScreen() {
         text: '#059669',
         badgeBg: '#10b981',
         icon: 'verified',
+        label: 'Sangat Disiplin',
+        stars: 5,
       };
     }
     if (p.includes('disiplin') && !p.includes('tidak') && !p.includes('kurang') && !p.includes('cukup')) {
@@ -157,6 +165,8 @@ export default function EvaluasiScreen() {
         text: '#2563eb',
         badgeBg: '#3b82f6',
         icon: 'thumb-up',
+        label: 'Disiplin',
+        stars: 4,
       };
     }
     if (p.includes('cukup') || (score >= 70 && score < 80)) {
@@ -166,6 +176,8 @@ export default function EvaluasiScreen() {
         text: '#d97706',
         badgeBg: '#f59e0b',
         icon: 'info',
+        label: 'Cukup Disiplin',
+        stars: 3,
       };
     }
     if (p.includes('kurang') || (score >= 50 && score < 70)) {
@@ -175,6 +187,8 @@ export default function EvaluasiScreen() {
         text: '#ea580c',
         badgeBg: '#f97316',
         icon: 'warning',
+        label: 'Kurang Disiplin',
+        stars: 2,
       };
     }
     // Tidak Disiplin / Rendah
@@ -184,90 +198,122 @@ export default function EvaluasiScreen() {
       text: '#dc2626',
       badgeBg: '#ef4444',
       icon: 'report-problem',
+      label: 'Tidak Disiplin',
+      stars: 1,
     };
+  };
+
+  const sanitizeText = (str?: string | null) => {
+    if (!str) return '';
+    return str
+      .replace(/PT\.?\s*Pagaruyung\s*(Diesel)?/gi, '')
+      .replace(/Pagaruyung\s*Diesel/gi, '')
+      .replace(/Pagaruyung/gi, '')
+      .replace(/Diesel/gi, '')
+      .replace(/Owner/gi, 'Personalia')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
   };
 
   const getStatusBadge = (status: string = '', label?: string) => {
     const isApproved = status.toLowerCase() === 'approved';
+    const cleanLabel = label ? sanitizeText(label) : undefined;
     return {
-      text: label || (isApproved ? 'Disahkan Owner' : 'Menunggu Validasi'),
+      text: cleanLabel || (isApproved ? 'Disahkan Personalia' : 'Menunggu Validasi'),
       bg: isApproved ? '#ede9fe' : '#fef3c7',
       color: isApproved ? '#6d28d9' : '#b45309',
-      icon: isApproved ? 'verified-user' : 'hourglass-empty',
+      border: isApproved ? '#ddd6fe' : '#fde68a',
+      icon: isApproved ? 'verified' : 'schedule',
+      isApproved,
     };
   };
 
+  const heroTheme = summary
+    ? getPredicateTheme(summary.annual_predicate, summary.avg_score)
+    : getPredicateTheme('', 0);
+
   return (
     <View style={styles.rootWrapper}>
-      {/* HEADER SECTION */}
-      <View style={[styles.headerContainer, { paddingTop: Math.max(insets.top + 8, 20) }]}>
-        <View style={styles.headerTop}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.headerSub}>Evaluasi Kinerja & Kedisiplinan</Text>
-            <Text style={styles.headerTitle}>Rapor Kedisiplinan</Text>
+      {/* 1. TOP HEADER (Deep Corporate Blue) */}
+      <View style={[styles.headerHeroContainer, { paddingTop: Math.max(insets.top + 8, 20) }]}>
+        <View style={styles.headerTopBar}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace('/(tabs)/profile');
+                }
+              }}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <MaterialIcons name="arrow-back" size={24} color="#ffffff" />
+            </TouchableOpacity>
+
+            <View style={{ flex: 1, marginLeft: 6 }}>
+              <Text style={styles.headerTitle}>Penilaian Kinerja</Text>
+            </View>
           </View>
+
+          {/* Year Selector Button */}
           <TouchableOpacity
-            style={styles.yearButton}
+            style={styles.yearPill}
             onPress={() => setYearPickerVisible(true)}
             activeOpacity={0.8}
           >
-            <MaterialIcons name="calendar-today" size={15} color="#ffffff" style={{ marginRight: 6 }} />
-            <Text style={styles.yearButtonText}>{selectedYear}</Text>
-            <MaterialIcons name="arrow-drop-down" size={20} color="#ffffff" />
+            <MaterialIcons name="event" size={16} color="#ffffff" style={{ marginRight: 6 }} />
+            <Text style={styles.yearPillText}>Tahun {selectedYear}</Text>
+            <MaterialIcons name="expand-more" size={18} color="#ffffff" />
           </TouchableOpacity>
         </View>
 
-        {/* HERO ANNUAL SCORECARD */}
+        {/* 2. ELEVATED SCORECARD HERO (Gleaming Star Rating Card) */}
         {summary ? (
-          <View style={styles.heroScoreCard}>
-            <View style={styles.heroScoreRow}>
-              <View style={styles.scoreCircleWrapper}>
-                <View style={[
-                  styles.scoreCircle,
-                  { borderColor: getPredicateTheme(summary.annual_predicate, summary.avg_score).text }
-                ]}>
-                  <Text style={[
-                    styles.scoreText,
-                    { color: getPredicateTheme(summary.annual_predicate, summary.avg_score).text }
-                  ]}>
-                    {Number(summary.avg_score).toFixed(1)}
-                  </Text>
-                  <Text style={styles.scoreScale}>/ 100</Text>
-                </View>
+          <View style={styles.scoreHeroCard}>
+            <View style={styles.scoreHeroRow}>
+              {/* Star Showcase Left */}
+              <View style={[styles.gaugeOuter, { borderColor: heroTheme.border, backgroundColor: heroTheme.bg }]}>
+                {renderStars(heroTheme.stars, 16, '#f59e0b', '#cbd5e1')}
+                <Text style={[styles.starCountLabel, { color: heroTheme.text }]}>
+                  {heroTheme.stars} Bintang
+                </Text>
+                <Text style={styles.gaugeScale}>PREDIKAT TAHUNAN</Text>
               </View>
 
-              <View style={styles.heroSummaryDetails}>
-                <View style={[
-                  styles.predicateBadge,
-                  { backgroundColor: getPredicateTheme(summary.annual_predicate, summary.avg_score).badgeBg }
-                ]}>
-                  <MaterialIcons
-                    name={getPredicateTheme(summary.annual_predicate, summary.avg_score).icon as any}
-                    size={14}
-                    color="#ffffff"
-                    style={{ marginRight: 4 }}
-                  />
-                  <Text style={styles.predicateBadgeText}>{summary.annual_predicate || 'Belum Ada Penilaian'}</Text>
+              {/* Predicate & Summary */}
+              <View style={styles.heroRightContent}>
+                <View style={[styles.heroPredicatePill, { backgroundColor: heroTheme.badgeBg }]}>
+                  <MaterialIcons name={heroTheme.icon as any} size={14} color="#ffffff" style={{ marginRight: 4 }} />
+                  <Text style={styles.heroPredicateText}>
+                    {summary.annual_predicate || 'Belum Ada Penilaian'}
+                  </Text>
                 </View>
 
-                <Text style={styles.heroSummarySubtitle}>
-                  Rata-rata dari {summary.final_months_count} bulan disahkan tahun {selectedYear}
+                <Text style={styles.heroPeriodNotice}>
+                  Rangkuman dari <Text style={{ fontWeight: 'bold', color: '#1e293b' }}>{summary.final_months_count} bulan</Text> disahkan di {selectedYear}
                 </Text>
 
-                <View style={styles.heroMiniMetricsRow}>
-                  <View style={styles.heroMiniMetricItem}>
-                    <Text style={styles.heroMiniMetricVal}>{summary.total_late_count}x</Text>
-                    <Text style={styles.heroMiniMetricLbl}>Terlambat</Text>
+                {/* 3 Metric Pills */}
+                <View style={styles.heroMiniCardsRow}>
+                  <View style={styles.heroMiniCard}>
+                    <MaterialIcons name="schedule" size={14} color="#ea580c" />
+                    <Text style={styles.heroMiniCardVal}>{summary.total_late_count}x</Text>
+                    <Text style={styles.heroMiniCardLbl}>Telat</Text>
                   </View>
-                  <View style={styles.heroMiniMetricDivider} />
-                  <View style={styles.heroMiniMetricItem}>
-                    <Text style={styles.heroMiniMetricVal}>{summary.total_late_minutes}m</Text>
-                    <Text style={styles.heroMiniMetricLbl}>Durasi Telat</Text>
+
+                  <View style={styles.heroMiniCard}>
+                    <MaterialIcons name="timelapse" size={14} color="#d97706" />
+                    <Text style={styles.heroMiniCardVal}>{summary.total_late_minutes}m</Text>
+                    <Text style={styles.heroMiniCardLbl}>Durasi</Text>
                   </View>
-                  <View style={styles.heroMiniMetricDivider} />
-                  <View style={styles.heroMiniMetricItem}>
-                    <Text style={styles.heroMiniMetricVal}>{summary.total_incomplete}</Text>
-                    <Text style={styles.heroMiniMetricLbl}>Incomplete</Text>
+
+                  <View style={styles.heroMiniCard}>
+                    <MaterialIcons name="error-outline" size={14} color="#dc2626" />
+                    <Text style={styles.heroMiniCardVal}>{summary.total_incomplete}</Text>
+                    <Text style={styles.heroMiniCardLbl}>No Out</Text>
                   </View>
                 </View>
               </View>
@@ -275,69 +321,54 @@ export default function EvaluasiScreen() {
           </View>
         ) : null}
 
-        {/* TAB NAVIGATION SEGMENT */}
-        <View style={styles.tabBar}>
+        {/* 3. SEGMENTED TABS CONTROLLER (Balanced 2 Tabs) */}
+        <View style={styles.tabsContainer}>
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'bulanan' && styles.tabButtonActive]}
+            style={[styles.tabItem, activeTab === 'bulanan' && styles.tabItemActive]}
             onPress={() => setActiveTab('bulanan')}
             activeOpacity={0.8}
           >
             <MaterialIcons
               name="calendar-view-month"
               size={18}
-              color={activeTab === 'bulanan' ? theme.colors.primary : '#94a3b8'}
+              color={activeTab === 'bulanan' ? theme.colors.primary : '#64748b'}
               style={{ marginRight: 6 }}
             />
-            <Text style={[styles.tabText, activeTab === 'bulanan' && styles.tabTextActive]}>
-              Bulanan Saya
+            <Text style={[styles.tabLabel, activeTab === 'bulanan' && styles.tabLabelActive]}>
+              Rapor Bulanan
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'rekap_tahunan' && styles.tabButtonActive]}
+            style={[styles.tabItem, activeTab === 'rekap_tahunan' && styles.tabItemActive]}
             onPress={() => setActiveTab('rekap_tahunan')}
             activeOpacity={0.8}
           >
             <MaterialIcons
               name="pie-chart"
               size={18}
-              color={activeTab === 'rekap_tahunan' ? theme.colors.primary : '#94a3b8'}
+              color={activeTab === 'rekap_tahunan' ? theme.colors.primary : '#64748b'}
               style={{ marginRight: 6 }}
             />
-            <Text style={[styles.tabText, activeTab === 'rekap_tahunan' && styles.tabTextActive]}>
+            <Text style={[styles.tabLabel, activeTab === 'rekap_tahunan' && styles.tabLabelActive]}>
               Rekap 12 Bulan
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'tim_cabang' && styles.tabButtonActive]}
-            onPress={() => setActiveTab('tim_cabang')}
-            activeOpacity={0.8}
-          >
-            <MaterialIcons
-              name="groups"
-              size={18}
-              color={activeTab === 'tim_cabang' ? theme.colors.primary : '#94a3b8'}
-              style={{ marginRight: 6 }}
-            />
-            <Text style={[styles.tabText, activeTab === 'tim_cabang' && styles.tabTextActive]}>
-              Tim Cabang
             </Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* CONTENT BODY */}
+      {/* 4. CONTENT BODY */}
       {isLoading ? (
         <View style={styles.centerLoading}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={styles.loadingText}>Memuat evaluasi kedisiplinan...</Text>
+          <Text style={styles.loadingText}>Memuat penilaian kinerja...</Text>
         </View>
       ) : (
         <ScrollView
           style={styles.contentScroll}
           contentContainerStyle={styles.contentScrollInner}
           showsVerticalScrollIndicator={false}
+          alwaysBounceVertical={true}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -347,121 +378,169 @@ export default function EvaluasiScreen() {
             />
           }
         >
-          {/* TAB 1: BULANAN SAYA */}
+          {/* TAB 1: RAPOR BULANAN */}
           {activeTab === 'bulanan' && (
             <View>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitle}>Daftar Evaluasi Bulanan</Text>
-                <Text style={styles.sectionBadge}>{monthlyList.length} Periode</Text>
+              <View style={styles.sectionHeader}>
+                <View>
+                  <Text style={styles.sectionTitle}>Daftar Rapor Bulanan</Text>
+                  <Text style={styles.sectionSubtitle}>Hasil penilaian resmi & catatan pengesahan Personalia</Text>
+                </View>
+                <View style={styles.countBadge}>
+                  <Text style={styles.countBadgeText}>{monthlyList.length} Periode</Text>
+                </View>
               </View>
 
               {monthlyList.length === 0 ? (
                 <View style={styles.emptyContainer}>
-                  <MaterialIcons name="assessment" size={48} color="#cbd5e1" />
+                  <MaterialIcons name="assignment-late" size={54} color="#cbd5e1" />
                   <Text style={styles.emptyTitle}>Belum Ada Evaluasi</Text>
                   <Text style={styles.emptyDesc}>
-                    Data evaluasi kedisiplinan tahun {selectedYear} belum diterbitkan oleh bagian HRD.
+                    Penilaian kinerja untuk tahun {selectedYear} belum diterbitkan oleh bagian HRD.
                   </Text>
                 </View>
               ) : (
                 monthlyList.map((item) => {
-                  const pTheme = getPredicateTheme(item.predicate, item.score);
                   const statusInfo = getStatusBadge(item.status, item.status_label);
+                  const isApproved = statusInfo.isApproved;
+                  const pTheme = getPredicateTheme(item.predicate, item.score);
+                  const stars = getStarCount(item.predicate, item.score);
 
+                  // JIKA BULAN INI BELUM DI-VALIDASI / BELUM DISAHKAN: TAMPILKAN KARTU MASA PEMANTAUAN
+                  if (!isApproved) {
+                    return (
+                      <View key={item.id || item.month} style={styles.monitoringCard}>
+                        {/* Header Status */}
+                        <View style={styles.monitoringHeader}>
+                          <View style={styles.cardMonthTitleRow}>
+                            <Text style={styles.cardMonthText}>{item.month_name}</Text>
+                            <Text style={styles.cardYearText}>{item.year}</Text>
+                          </View>
+                          <View style={styles.monitoringPill}>
+                            <MaterialIcons name="hourglass-empty" size={13} color="#d97706" style={{ marginRight: 4 }} />
+                            <Text style={styles.monitoringPillText}>Masa Pemantauan</Text>
+                          </View>
+                        </View>
+
+                        {/* Notice Body */}
+                        <View style={styles.monitoringNoticeBox}>
+                          <View style={styles.monitoringIconWrap}>
+                            <MaterialIcons name="insights" size={24} color="#d97706" />
+                          </View>
+                          <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={styles.monitoringTitle}>Sedang Masa Penilaian</Text>
+                            <Text style={styles.monitoringDesc}>
+                              Bulan ini sedang masa penilaian dan pemantauan pekerjaan Anda. Rapor evaluasi dan bintang kinerja akan diterbitkan setelah periode disahkan oleh Personalia.
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  }
+
+                  // JIKA SUDAH DISAHKAN: TAMPILKAN RAPOR DENGAN BINTANG (TANPA ANGKA SKOR)
                   return (
                     <TouchableOpacity
                       key={item.id || item.month}
-                      style={styles.monthlyCard}
-                      onPress={() => handleOpenMonthDetail(item.month)}
-                      activeOpacity={0.85}
+                      style={styles.cardItem}
+                      onPress={() => handleOpenMonthDetail(item.month, true)}
+                      activeOpacity={0.88}
                     >
-                      {/* Top Row: Month, Status & Score */}
-                      <View style={styles.monthCardTop}>
-                        <View style={{ flex: 1 }}>
-                          <View style={styles.monthHeaderRow}>
-                            <Text style={styles.monthName}>{item.month_name} {item.year}</Text>
-                            <View style={[styles.statusBadge, { backgroundColor: statusInfo.bg }]}>
-                              <MaterialIcons name={statusInfo.icon as any} size={13} color={statusInfo.color} style={{ marginRight: 4 }} />
-                              <Text style={[styles.statusBadgeText, { color: statusInfo.color }]}>
-                                {statusInfo.text}
-                              </Text>
-                            </View>
+                      {/* Top Header Row of Card */}
+                      <View style={styles.cardHeaderRow}>
+                        <View style={{ flex: 1, paddingRight: 8 }}>
+                          <View style={styles.cardMonthTitleRow}>
+                            <Text style={styles.cardMonthText}>{item.month_name}</Text>
+                            <Text style={styles.cardYearText}>{item.year}</Text>
                           </View>
-                          <Text style={styles.monthSubText}>
-                            {item.total_work_days} Hari Kerja • {item.present_days} Hari Hadir ({item.consistency_pct}%)
+                          <Text style={styles.cardWorkingDaysText}>
+                            {item.present_days} dari {item.total_work_days} Hari Hadir ({item.consistency_pct}%)
                           </Text>
                         </View>
 
-                        {/* Score Circle Mini */}
-                        <View style={[styles.scoreBadgeBox, { backgroundColor: pTheme.bg, borderColor: pTheme.border }]}>
-                          <Text style={[styles.scoreBadgeVal, { color: pTheme.text }]}>
-                            {Number(item.score).toFixed(1)}
+                        {/* Status Approval Pill */}
+                        <View style={[styles.statusPill, { backgroundColor: statusInfo.bg, borderColor: statusInfo.border }]}>
+                          <MaterialIcons name={statusInfo.icon as any} size={13} color={statusInfo.color} style={{ marginRight: 4 }} />
+                          <Text style={[styles.statusPillText, { color: statusInfo.color }]}>
+                            {statusInfo.text}
                           </Text>
-                          <Text style={[styles.scoreBadgeLbl, { color: pTheme.text }]}>Skor</Text>
                         </View>
                       </View>
 
-                      {/* Predicate Banner */}
-                      <View style={[styles.predicateRowBanner, { backgroundColor: pTheme.bg, borderColor: pTheme.border }]}>
-                        <MaterialIcons name={pTheme.icon as any} size={16} color={pTheme.text} style={{ marginRight: 6 }} />
-                        <Text style={[styles.predicateRowText, { color: pTheme.text }]}>
-                          Predikat: <Text style={{ fontWeight: 'bold' }}>{item.predicate}</Text>
-                        </Text>
+                      {/* Main Star & Predicate Highlight Banner (Bintang, Bukan Skor Angka) */}
+                      <View style={[styles.scoreBanner, { backgroundColor: pTheme.bg, borderColor: pTheme.border }]}>
+                        <View style={styles.scoreBannerLeft}>
+                          {renderStars(stars, 22, '#f59e0b', '#cbd5e1')}
+                          <View style={{ marginLeft: 10 }}>
+                            <Text style={styles.scoreBannerLbl}>PENILAIAN KINERJA</Text>
+                            <Text style={[styles.scoreBannerPredicate, { color: pTheme.text }]}>
+                              {item.predicate}
+                            </Text>
+                          </View>
+                        </View>
+                        <MaterialIcons name={pTheme.icon as any} size={26} color={pTheme.text} />
                       </View>
 
-                      {/* Metrics 4 Grid */}
-                      <View style={styles.metricsGrid}>
-                        <View style={styles.metricGridItem}>
-                          <MaterialIcons name="schedule" size={16} color="#ea580c" />
-                          <View style={{ marginLeft: 6 }}>
-                            <Text style={styles.metricGridVal}>{item.late_count}x ({item.total_late_minutes}m)</Text>
-                            <Text style={styles.metricGridLbl}>Terlambat</Text>
-                          </View>
+                      {/* Attendance Consistency Progress Bar */}
+                      <View style={styles.progressContainer}>
+                        <View style={styles.progressHeader}>
+                          <Text style={styles.progressLabel}>Tingkat Kehadiran Kerja</Text>
+                          <Text style={styles.progressPercent}>{item.consistency_pct}%</Text>
                         </View>
-
-                        <View style={styles.metricGridItem}>
-                          <MaterialIcons name="warning" size={16} color="#d97706" />
-                          <View style={{ marginLeft: 6 }}>
-                            <Text style={styles.metricGridVal}>{item.incomplete_count} Hari</Text>
-                            <Text style={styles.metricGridLbl}>Tanpa Checkout</Text>
-                          </View>
-                        </View>
-
-                        <View style={styles.metricGridItem}>
-                          <MaterialIcons name="event-busy" size={16} color="#dc2626" />
-                          <View style={{ marginLeft: 6 }}>
-                            <Text style={styles.metricGridVal}>{item.absent_count} Hari</Text>
-                            <Text style={styles.metricGridLbl}>Alpha / Mangkir</Text>
-                          </View>
-                        </View>
-
-                        <View style={styles.metricGridItem}>
-                          <MaterialIcons name="beach-access" size={16} color="#059669" />
-                          <View style={{ marginLeft: 6 }}>
-                            <Text style={styles.metricGridVal}>{item.leave_count} Hari</Text>
-                            <Text style={styles.metricGridLbl}>Cuti / Izin</Text>
-                          </View>
+                        <View style={styles.progressTrack}>
+                          <View
+                            style={[
+                              styles.progressBar,
+                              {
+                                width: `${Math.min(Math.max(item.consistency_pct, 4), 100)}%`,
+                                backgroundColor: item.consistency_pct >= 80 ? '#10b981' : item.consistency_pct >= 50 ? '#f59e0b' : '#ef4444',
+                              }
+                            ]}
+                          />
                         </View>
                       </View>
 
-                      {/* Review Note from Owner if present */}
-                      {item.review_note ? (
-                        <View style={styles.reviewNoteBanner}>
-                          <MaterialIcons name="comment" size={14} color="#475569" style={{ marginRight: 6, marginTop: 2 }} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.reviewNoteTitle}>Catatan Pengesahan Owner:</Text>
-                            <Text style={styles.reviewNoteContent}>"{item.review_note}"</Text>
-                            {item.reviewed_at ? (
-                              <Text style={styles.reviewNoteDate}>Disahkan pada: {item.reviewed_at}</Text>
-                            ) : null}
+                      {/* 4 Mini Stat Badges */}
+                      <View style={styles.statGrid}>
+                        <View style={styles.statCell}>
+                          <MaterialCommunityIcons name="clock-alert-outline" size={17} color="#ea580c" />
+                          <View style={{ marginLeft: 6 }}>
+                            <Text style={styles.statCellVal}>{item.late_count}x ({item.total_late_minutes}m)</Text>
+                            <Text style={styles.statCellLbl}>Terlambat</Text>
                           </View>
                         </View>
-                      ) : null}
 
-                      {/* Footer Action */}
-                      <View style={styles.cardFooterAction}>
-                        <Text style={styles.viewDetailActionText}>Lihat Log Presensi & Rincian Penalti</Text>
-                        <MaterialIcons name="arrow-forward-ios" size={13} color={theme.colors.primary} />
+                        <View style={styles.statCell}>
+                          <MaterialCommunityIcons name="account-cancel-outline" size={17} color="#dc2626" />
+                          <View style={{ marginLeft: 6 }}>
+                            <Text style={styles.statCellVal}>{item.absent_count} Hari</Text>
+                            <Text style={styles.statCellLbl}>Alpha / Mangkir</Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.statCell}>
+                          <MaterialCommunityIcons name="logout" size={17} color="#d97706" />
+                          <View style={{ marginLeft: 6 }}>
+                            <Text style={styles.statCellVal}>{item.incomplete_count} Hari</Text>
+                            <Text style={styles.statCellLbl}>No Checkout</Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.statCell}>
+                          <MaterialCommunityIcons name="beach" size={17} color="#059669" />
+                          <View style={{ marginLeft: 6 }}>
+                            <Text style={styles.statCellVal}>{item.leave_count} Hari</Text>
+                            <Text style={styles.statCellLbl}>Cuti / Izin</Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Touch for Details CTA */}
+                      <View style={styles.cardActionRow}>
+                        <Text style={styles.cardActionText}>Buka Rincian Log Harian & Snapshot</Text>
+                        <View style={styles.cardActionArrow}>
+                          <MaterialIcons name="arrow-forward" size={14} color="#ffffff" />
+                        </View>
                       </View>
                     </TouchableOpacity>
                   );
@@ -473,46 +552,40 @@ export default function EvaluasiScreen() {
           {/* TAB 2: REKAP 12 BULAN TAHUNAN */}
           {activeTab === 'rekap_tahunan' && annualRekap && (
             <View>
-              {/* Employee Header Info */}
-              <View style={styles.annualProfileCard}>
-                <View style={styles.annualAvatarBox}>
-                  <MaterialIcons name="person" size={24} color="#ffffff" />
+              {/* 3 Metric High-Level Pills (Bintang & Predikat, Tanpa Angka Skor) */}
+              <View style={styles.annualMetricRow}>
+                <View style={styles.annualMetricCard}>
+                  <Text style={styles.annualMetricLabel}>PREDIKAT TAHUNAN</Text>
+                  <View style={{ marginVertical: 6 }}>
+                    {renderStars(heroTheme.stars, 14, '#f59e0b', '#cbd5e1')}
+                  </View>
+                  <Text style={styles.annualMetricSub}>{annualRekap.data.annual_predicate || 'Belum Ada'}</Text>
                 </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.annualName}>{annualRekap.data.employee_name}</Text>
-                  <Text style={styles.annualSub}>
-                    NIK: {annualRekap.data.nik} • {annualRekap.data.position_name}
+
+                <View style={styles.annualMetricCard}>
+                  <Text style={styles.annualMetricLabel}>BULAN DISAHKAN</Text>
+                  <Text style={[styles.annualMetricValue, { color: '#059669' }]}>
+                    {annualRekap.data.final_months_count}
                   </Text>
-                  <Text style={styles.annualBranch}>
-                    {annualRekap.data.branch_name} ({annualRekap.data.department})
-                  </Text>
+                  <Text style={styles.annualMetricSub}>Bulan Selesai</Text>
+                </View>
+
+                <View style={styles.annualMetricCard}>
+                  <Text style={styles.annualMetricLabel}>STATUS PENILAIAN</Text>
+                  <MaterialCommunityIcons name="shield-check" size={24} color="#4f46e5" style={{ marginVertical: 2 }} />
+                  <Text style={styles.annualMetricSub}>Aktif Memantau</Text>
                 </View>
               </View>
 
-              {/* Annual Stats Trio */}
-              <View style={styles.annualStatsRow}>
-                <View style={styles.annualStatBox}>
-                  <Text style={styles.annualStatVal}>{Number(annualRekap.data.avg_score).toFixed(1)}</Text>
-                  <Text style={styles.annualStatLbl}>Rata-Rata</Text>
+              {/* 12-Month Matrix Visual Grid */}
+              <View style={styles.matrixContainer}>
+                <View style={styles.matrixHeaderRow}>
+                  <View>
+                    <Text style={styles.matrixMainTitle}>Kalender Rapor 12 Bulan</Text>
+                    <Text style={styles.matrixSubTitle}>Ketuk bulan bertanda untuk melihat detailnya</Text>
+                  </View>
+                  <MaterialIcons name="grid-on" size={20} color={theme.colors.primary} />
                 </View>
-                <View style={styles.annualStatBox}>
-                  <Text style={[styles.annualStatVal, { color: '#059669' }]}>
-                    {Number(annualRekap.data.max_score).toFixed(1)}
-                  </Text>
-                  <Text style={styles.annualStatLbl}>Tertinggi</Text>
-                </View>
-                <View style={styles.annualStatBox}>
-                  <Text style={[styles.annualStatVal, { color: '#dc2626' }]}>
-                    {Number(annualRekap.data.min_score).toFixed(1)}
-                  </Text>
-                  <Text style={styles.annualStatLbl}>Terendah</Text>
-                </View>
-              </View>
-
-              {/* 12 Months Matrix Card */}
-              <View style={styles.matrixCard}>
-                <Text style={styles.matrixTitle}>Matriks 12 Bulan ({selectedYear})</Text>
-                <Text style={styles.matrixSub}>Riwayat skor dan status kedisiplinan sepanjang tahun</Text>
 
                 <View style={styles.matrixGrid}>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
@@ -522,36 +595,48 @@ export default function EvaluasiScreen() {
                       'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
                     ][m - 1];
 
-                    const pTheme = monthData
+                    const isApproved = Boolean(monthData && monthData.is_approved);
+                    const isDraft = Boolean(monthData && !monthData.is_approved);
+
+                    const pTheme = isApproved && monthData
                       ? getPredicateTheme(monthData.predicate, monthData.score)
-                      : { bg: '#f8fafc', border: '#e2e8f0', text: '#94a3b8' };
+                      : isDraft
+                        ? { bg: '#fffbeb', border: '#fde68a', text: '#d97706', stars: 0 }
+                        : { bg: '#f8fafc', border: '#e2e8f0', text: '#94a3b8', stars: 0 };
 
                     return (
                       <TouchableOpacity
                         key={m}
                         style={[
-                          styles.matrixItem,
+                          styles.matrixCell,
                           {
                             backgroundColor: pTheme.bg,
                             borderColor: pTheme.border,
-                            opacity: monthData ? 1 : 0.6,
+                            opacity: monthData ? 1 : 0.45,
                           }
                         ]}
                         disabled={!monthData}
-                        onPress={() => handleOpenMonthDetail(m)}
+                        onPress={() => handleOpenMonthDetail(m, isApproved)}
+                        activeOpacity={0.8}
                       >
-                        <Text style={styles.matrixMonthName}>{monthShortName}</Text>
-                        {monthData ? (
+                        <Text style={styles.matrixCellMonth}>{monthShortName}</Text>
+                        {isApproved && monthData ? (
                           <>
-                            <Text style={[styles.matrixScore, { color: pTheme.text }]}>
-                              {Number(monthData.score).toFixed(1)}
-                            </Text>
-                            <Text style={[styles.matrixStatus, { color: pTheme.text }]} numberOfLines={1}>
-                              {monthData.is_approved ? 'Disahkan' : 'Draft'}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
+                              <MaterialIcons name="star" size={13} color="#f59e0b" />
+                              <Text style={[styles.matrixStarNum, { color: pTheme.text }]}>
+                                {pTheme.stars}
+                              </Text>
+                            </View>
+                            <View style={[styles.matrixMiniDot, { backgroundColor: '#10b981' }]} />
+                          </>
+                        ) : isDraft ? (
+                          <>
+                            <MaterialIcons name="hourglass-empty" size={13} color="#d97706" style={{ marginTop: 4 }} />
+                            <Text style={styles.matrixDraftLabel} numberOfLines={1}>Pantau</Text>
                           </>
                         ) : (
-                          <Text style={styles.matrixEmptyText}>--</Text>
+                          <Text style={styles.matrixCellEmpty}>-</Text>
                         )}
                       </TouchableOpacity>
                     );
@@ -559,196 +644,72 @@ export default function EvaluasiScreen() {
                 </View>
               </View>
 
-              {/* Predicate Counts Breakdown */}
-              <View style={styles.breakdownCard}>
-                <Text style={styles.breakdownTitle}>Distribusi Predikat Tahunan</Text>
+              {/* Predicate Counts Breakdown (Bintang) */}
+              <View style={styles.distributionCard}>
+                <Text style={styles.distributionTitle}>Distribusi Predikat Tahunan</Text>
 
-                <View style={styles.predicateCountItem}>
-                  <View style={[styles.predicateDot, { backgroundColor: '#10b981' }]} />
-                  <Text style={styles.predicateCountLabel}>Sangat Disiplin (≥ 90)</Text>
-                  <Text style={styles.predicateCountVal}>{annualRekap.data.predicate_counts.sangat_disiplin} Bulan</Text>
+                <View style={styles.distRow}>
+                  <View style={styles.distStarsWrap}>{renderStars(5, 14, '#10b981')}</View>
+                  <Text style={styles.distLabel}>Sangat Disiplin (5 Bintang)</Text>
+                  <Text style={styles.distValue}>{annualRekap.data.predicate_counts.sangat_disiplin} Bulan</Text>
                 </View>
 
-                <View style={styles.predicateCountItem}>
-                  <View style={[styles.predicateDot, { backgroundColor: '#3b82f6' }]} />
-                  <Text style={styles.predicateCountLabel}>Disiplin (80 - 89.9)</Text>
-                  <Text style={styles.predicateCountVal}>{annualRekap.data.predicate_counts.disiplin} Bulan</Text>
+                <View style={styles.distRow}>
+                  <View style={styles.distStarsWrap}>{renderStars(4, 14, '#3b82f6')}</View>
+                  <Text style={styles.distLabel}>Disiplin (4 Bintang)</Text>
+                  <Text style={styles.distValue}>{annualRekap.data.predicate_counts.disiplin} Bulan</Text>
                 </View>
 
-                <View style={styles.predicateCountItem}>
-                  <View style={[styles.predicateDot, { backgroundColor: '#f59e0b' }]} />
-                  <Text style={styles.predicateCountLabel}>Cukup Disiplin (70 - 79.9)</Text>
-                  <Text style={styles.predicateCountVal}>{annualRekap.data.predicate_counts.cukup_disiplin} Bulan</Text>
+                <View style={styles.distRow}>
+                  <View style={styles.distStarsWrap}>{renderStars(3, 14, '#f59e0b')}</View>
+                  <Text style={styles.distLabel}>Cukup Disiplin (3 Bintang)</Text>
+                  <Text style={styles.distValue}>{annualRekap.data.predicate_counts.cukup_disiplin} Bulan</Text>
                 </View>
 
-                <View style={styles.predicateCountItem}>
-                  <View style={[styles.predicateDot, { backgroundColor: '#ea580c' }]} />
-                  <Text style={styles.predicateCountLabel}>Kurang Disiplin (50 - 69.9)</Text>
-                  <Text style={styles.predicateCountVal}>{annualRekap.data.predicate_counts.kurang_disiplin} Bulan</Text>
+                <View style={styles.distRow}>
+                  <View style={styles.distStarsWrap}>{renderStars(2, 14, '#ea580c')}</View>
+                  <Text style={styles.distLabel}>Kurang Disiplin (2 Bintang)</Text>
+                  <Text style={styles.distValue}>{annualRekap.data.predicate_counts.kurang_disiplin} Bulan</Text>
                 </View>
 
-                <View style={styles.predicateCountItem}>
-                  <View style={[styles.predicateDot, { backgroundColor: '#ef4444' }]} />
-                  <Text style={styles.predicateCountLabel}>Tidak Disiplin (&lt; 50)</Text>
-                  <Text style={styles.predicateCountVal}>{annualRekap.data.predicate_counts.tidak_disiplin} Bulan</Text>
+                <View style={styles.distRow}>
+                  <View style={styles.distStarsWrap}>{renderStars(1, 14, '#ef4444')}</View>
+                  <Text style={styles.distLabel}>Tidak Disiplin (1 Bintang)</Text>
+                  <Text style={styles.distValue}>{annualRekap.data.predicate_counts.tidak_disiplin} Bulan</Text>
                 </View>
               </View>
             </View>
           )}
 
-          {/* TAB 3: TIM CABANG */}
-          {activeTab === 'tim_cabang' && (
-            <View>
-              {/* Month Selector for Team */}
-              <View style={styles.teamMonthFilterCard}>
-                <Text style={styles.teamMonthFilterLbl}>Pilih Periode Bulan:</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.teamMonthScroll}>
-                  {[10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((m) => {
-                    const monthNames = [
-                      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-                      'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
-                    ];
-                    const isSelected = teamMonth === m;
-                    return (
-                      <TouchableOpacity
-                        key={m}
-                        style={[styles.teamMonthChip, isSelected && styles.teamMonthChipActive]}
-                        onPress={() => setTeamMonth(m)}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={[styles.teamMonthChipText, isSelected && styles.teamMonthChipTextActive]}>
-                          {monthNames[m - 1]} {selectedYear}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-
-              {/* Team Stats Summary */}
-              <View style={styles.teamSummaryBanner}>
-                <View style={styles.teamSummaryItem}>
-                  <Text style={styles.teamSummaryVal}>{teamTotal}</Text>
-                  <Text style={styles.teamSummaryLbl}>Total Karyawan</Text>
-                </View>
-                <View style={styles.teamSummaryDivider} />
-                <View style={styles.teamSummaryItem}>
-                  <Text style={[styles.teamSummaryVal, { color: '#059669' }]}>{teamApprovedCount}</Text>
-                  <Text style={styles.teamSummaryLbl}>Disahkan Owner</Text>
-                </View>
-              </View>
-
-              {isLoadingTeam ? (
-                <View style={styles.centerLoading}>
-                  <ActivityIndicator size="small" color={theme.colors.primary} />
-                  <Text style={styles.loadingText}>Memuat rapor tim cabang...</Text>
-                </View>
-              ) : teamList.length === 0 ? (
-                <View style={styles.emptyContainer}>
-                  <MaterialIcons name="group-off" size={48} color="#cbd5e1" />
-                  <Text style={styles.emptyTitle}>Data Tim Tidak Tersedia</Text>
-                  <Text style={styles.emptyDesc}>
-                    Belum ada data evaluasi kedisiplinan tim untuk bulan ini.
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.teamListContainer}>
-                  {teamList.map((member, idx) => {
-                    const pTheme = getPredicateTheme(member.predicate, member.score);
-                    const isOwnerApproved = member.status === 'approved';
-
-                    return (
-                      <TouchableOpacity
-                        key={member.id || idx}
-                        style={styles.teamMemberCard}
-                        onPress={() => {
-                          setSelectedTeamMember(member);
-                          setTeamDetailModalVisible(true);
-                        }}
-                        activeOpacity={0.85}
-                      >
-                        {/* Rank Badge */}
-                        <View style={[
-                          styles.rankBadge,
-                          idx === 0 && { backgroundColor: '#f59e0b' },
-                          idx === 1 && { backgroundColor: '#94a3b8' },
-                          idx === 2 && { backgroundColor: '#b45309' },
-                        ]}>
-                          <Text style={styles.rankBadgeText}>#{idx + 1}</Text>
-                        </View>
-
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <View style={styles.teamMemberHeader}>
-                            <Text style={styles.teamMemberName} numberOfLines={1}>
-                              {member.employee?.name || `Karyawan #${member.employee_id}`}
-                            </Text>
-                            <View style={[styles.scorePill, { backgroundColor: pTheme.bg, borderColor: pTheme.border }]}>
-                              <Text style={[styles.scorePillText, { color: pTheme.text }]}>
-                                {Number(member.score).toFixed(1)}
-                              </Text>
-                            </View>
-                          </View>
-
-                          <Text style={styles.teamMemberDept}>
-                            NIK: {member.employee?.nik || '-'} • {member.department}
-                          </Text>
-
-                          <View style={styles.teamMemberFooter}>
-                            <View style={[
-                              styles.teamPredicatePill,
-                              { backgroundColor: pTheme.badgeBg }
-                            ]}>
-                              <Text style={styles.teamPredicatePillText}>{member.predicate}</Text>
-                            </View>
-
-                            <Text style={styles.teamMemberStatsText}>
-                              {member.present_days}/{member.total_work_days} Hadir • Telat: {member.late_count}x ({member.total_late_minutes}m)
-                            </Text>
-                          </View>
-
-                          {isOwnerApproved ? (
-                            <View style={styles.ownerApprovedTag}>
-                              <MaterialIcons name="verified" size={13} color="#10b981" style={{ marginRight: 4 }} />
-                              <Text style={styles.ownerApprovedTagText}>Disahkan Owner</Text>
-                            </View>
-                          ) : null}
-                        </View>
-
-                        <MaterialIcons name="chevron-right" size={20} color="#cbd5e1" />
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
-          )}
-
-          <View style={{ height: 40 }} />
+          <View style={{ height: 48 }} />
         </ScrollView>
       )}
 
-      {/* DETAIL MODAL BULANAN SAYA */}
+      {/* 5. DETAIL MODAL BULANAN SAYA (Bintang, Tanpa Angka Skor) */}
       <Modal
         visible={detailModalVisible}
         transparent={true}
         animationType="slide"
         onRequestClose={() => setDetailModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            {/* Grab Handle */}
+            <View style={styles.modalGrabHandle} />
+
             {/* Modal Header */}
-            <View style={styles.modalHeader}>
+            <View style={styles.modalHeadBar}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Rincian Evaluasi Kedisiplinan</Text>
-                <Text style={styles.modalSubtitle}>
+                <Text style={styles.modalHeadTitle}>Detail Rapor Evaluasi</Text>
+                <Text style={styles.modalHeadSubtitle}>
                   {selectedMonthDetail ? `${selectedMonthDetail.month_name} ${selectedMonthDetail.year}` : 'Memuat data...'}
                 </Text>
               </View>
               <TouchableOpacity
-                style={styles.modalCloseBtn}
+                style={styles.modalCloseCircle}
                 onPress={() => setDetailModalVisible(false)}
               >
-                <MaterialIcons name="close" size={22} color="#64748b" />
+                <MaterialIcons name="close" size={20} color="#64748b" />
               </TouchableOpacity>
             </View>
 
@@ -758,120 +719,132 @@ export default function EvaluasiScreen() {
                 <Text style={styles.loadingText}>Memuat detail penilaian...</Text>
               </View>
             ) : (
-              <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-                {/* Modal Score Hero */}
+              <ScrollView style={styles.modalBodyScroll} showsVerticalScrollIndicator={false}>
+                {/* Hero Star Rating in Modal */}
                 <View style={[
-                  styles.modalScoreCard,
+                  styles.modalScoreHero,
                   {
                     backgroundColor: getPredicateTheme(selectedMonthDetail.predicate, selectedMonthDetail.score).bg,
                     borderColor: getPredicateTheme(selectedMonthDetail.predicate, selectedMonthDetail.score).border,
                   }
                 ]}>
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={[
-                      styles.modalScoreBig,
-                      { color: getPredicateTheme(selectedMonthDetail.predicate, selectedMonthDetail.score).text }
-                    ]}>
-                      {Number(selectedMonthDetail.score).toFixed(1)}
-                    </Text>
-                    <View style={[
-                      styles.predicateBadge,
-                      { backgroundColor: getPredicateTheme(selectedMonthDetail.predicate, selectedMonthDetail.score).badgeBg, marginTop: 4 }
-                    ]}>
-                      <Text style={styles.predicateBadgeText}>{selectedMonthDetail.predicate}</Text>
-                    </View>
-                    <Text style={styles.modalStatusText}>
-                      Status: <Text style={{ fontWeight: 'bold' }}>{selectedMonthDetail.status_label || selectedMonthDetail.status}</Text>
-                    </Text>
+                  {renderStars(getStarCount(selectedMonthDetail.predicate, selectedMonthDetail.score), 28, '#f59e0b', '#cbd5e1')}
+                  <View style={[
+                    styles.modalPredBadge,
+                    { backgroundColor: getPredicateTheme(selectedMonthDetail.predicate, selectedMonthDetail.score).badgeBg, marginTop: 8 }
+                  ]}>
+                    <Text style={styles.modalPredBadgeText}>{selectedMonthDetail.predicate}</Text>
                   </View>
+                  <Text style={styles.modalStatusNote}>
+                    Status: <Text style={{ fontWeight: 'bold' }}>{selectedMonthDetail.status_label || selectedMonthDetail.status}</Text>
+                  </Text>
                 </View>
 
-                {/* Owner Review Note Banner */}
-                {selectedMonthDetail.review_note ? (
-                  <View style={styles.modalReviewNoteCard}>
-                    <MaterialIcons name="verified-user" size={18} color="#6366f1" style={{ marginRight: 8, marginTop: 2 }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.modalReviewNoteTitle}>Catatan Resmi Owner:</Text>
-                      <Text style={styles.modalReviewNoteContent}>"{selectedMonthDetail.review_note}"</Text>
-                      {selectedMonthDetail.reviewed_at ? (
-                        <Text style={styles.modalReviewNoteDate}>Tanggal Verifikasi: {selectedMonthDetail.reviewed_at}</Text>
-                      ) : null}
-                    </View>
-                  </View>
-                ) : null}
-
-                {/* Ringkasan Parameter Disiplin */}
-                <Text style={styles.modalSectionHeading}>Parameter Penalti & Kehadiran</Text>
+                {/* Parameter Evaluasi Summary */}
+                <Text style={styles.modalSectionTitle}>Parameter Evaluasi Presensi</Text>
                 <View style={styles.modalStatsGrid}>
-                  <View style={styles.modalStatCell}>
-                    <Text style={styles.modalStatVal}>{selectedMonthDetail.present_days}/{selectedMonthDetail.total_work_days}</Text>
-                    <Text style={styles.modalStatLbl}>Hari Hadir</Text>
+                  <View style={styles.modalStatTile}>
+                    <Text style={styles.modalStatTileVal}>
+                      {selectedMonthDetail.present_days}/{selectedMonthDetail.total_work_days}
+                    </Text>
+                    <Text style={styles.modalStatTileLbl}>Hari Hadir</Text>
                   </View>
-                  <View style={styles.modalStatCell}>
-                    <Text style={styles.modalStatVal}>{selectedMonthDetail.consistency_pct}%</Text>
-                    <Text style={styles.modalStatLbl}>Konsistensi</Text>
+
+                  <View style={styles.modalStatTile}>
+                    <Text style={styles.modalStatTileVal}>{selectedMonthDetail.consistency_pct}%</Text>
+                    <Text style={styles.modalStatTileLbl}>Konsistensi</Text>
                   </View>
-                  <View style={styles.modalStatCell}>
-                    <Text style={[styles.modalStatVal, { color: '#ea580c' }]}>
+
+                  <View style={styles.modalStatTile}>
+                    <Text style={[styles.modalStatTileVal, { color: '#ea580c' }]}>
                       {selectedMonthDetail.late_count}x ({selectedMonthDetail.total_late_minutes}m)
                     </Text>
-                    <Text style={styles.modalStatLbl}>Terlambat</Text>
+                    <Text style={styles.modalStatTileLbl}>Terlambat</Text>
                   </View>
-                  <View style={styles.modalStatCell}>
-                    <Text style={[styles.modalStatVal, { color: '#dc2626' }]}>{selectedMonthDetail.absent_count}</Text>
-                    <Text style={styles.modalStatLbl}>Mangkir/Alpha</Text>
+
+                  <View style={styles.modalStatTile}>
+                    <Text style={[styles.modalStatTileVal, { color: '#dc2626' }]}>
+                      {selectedMonthDetail.absent_count} Hari
+                    </Text>
+                    <Text style={styles.modalStatTileLbl}>Alpha / Mangkir</Text>
                   </View>
-                  <View style={styles.modalStatCell}>
-                    <Text style={[styles.modalStatVal, { color: '#d97706' }]}>{selectedMonthDetail.incomplete_count}</Text>
-                    <Text style={styles.modalStatLbl}>Tanpa Checkout</Text>
+
+                  <View style={styles.modalStatTile}>
+                    <Text style={[styles.modalStatTileVal, { color: '#d97706' }]}>
+                      {selectedMonthDetail.incomplete_count} Hari
+                    </Text>
+                    <Text style={styles.modalStatTileLbl}>Tanpa Checkout</Text>
                   </View>
-                  <View style={styles.modalStatCell}>
-                    <Text style={[styles.modalStatVal, { color: '#059669' }]}>{selectedMonthDetail.leave_count}</Text>
-                    <Text style={styles.modalStatLbl}>Cuti/Izin</Text>
+
+                  <View style={styles.modalStatTile}>
+                    <Text style={[styles.modalStatTileVal, { color: '#059669' }]}>
+                      {selectedMonthDetail.leave_count} Hari
+                    </Text>
+                    <Text style={styles.modalStatTileLbl}>Cuti / Izin</Text>
                   </View>
                 </View>
 
-                {/* Log Presensi Harian Snapshot */}
-                <Text style={styles.modalSectionHeading}>Log Presensi Harian ({selectedMonthDetail.attendance_logs?.length || 0} Catatan)</Text>
+                {/* Log Presensi Harian Timeline */}
+                <Text style={styles.modalSectionTitle}>
+                  Log Kehadiran Harian ({selectedMonthDetail.attendance_logs?.length || 0} Hari Masuk)
+                </Text>
+
                 {selectedMonthDetail.attendance_logs && selectedMonthDetail.attendance_logs.length > 0 ? (
                   selectedMonthDetail.attendance_logs.map((log, idx) => {
                     const isLate = log.is_late;
                     const isIncomplete = log.is_incomplete;
-                    const dateFormatted = new Date(log.date).toLocaleDateString('id-ID', {
-                      weekday: 'short',
-                      day: 'numeric',
-                      month: 'short',
-                    });
+                    const dateObj = new Date(log.date);
+                    const dayName = dateObj.toLocaleDateString('id-ID', { weekday: 'long' });
+                    const dateNum = dateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
 
                     return (
-                      <View key={idx} style={styles.logItemRow}>
-                        <View style={styles.logDateCol}>
-                          <Text style={styles.logDateText}>{dateFormatted}</Text>
-                          <Text style={styles.logStatusText}>{log.status}</Text>
+                      <View key={idx} style={styles.timelineItem}>
+                        {/* Date Pillar */}
+                        <View style={styles.timelineDateBox}>
+                          <Text style={styles.timelineDateNum}>{dateNum}</Text>
+                          <Text style={styles.timelineDayName}>{dayName}</Text>
                         </View>
 
-                        <View style={styles.logTimeCol}>
-                          <Text style={styles.logTimeVal}>
-                            {log.clock_in ? log.clock_in.substring(0, 5) : '--:--'} - {log.clock_out ? log.clock_out.substring(0, 5) : '--:--'}
-                          </Text>
-                          <View style={styles.logBadgeRow}>
+                        {/* Clock In / Out Details */}
+                        <View style={styles.timelineContent}>
+                          <View style={styles.timelineTimeRow}>
+                            <View style={styles.timeTag}>
+                              <MaterialIcons name="login" size={13} color="#059669" style={{ marginRight: 4 }} />
+                              <Text style={styles.timeTagText}>
+                                {log.clock_in ? log.clock_in.substring(0, 5) : '--:--'}
+                              </Text>
+                            </View>
+
+                            <MaterialIcons name="arrow-right-alt" size={16} color="#94a3b8" style={{ marginHorizontal: 4 }} />
+
+                            <View style={styles.timeTag}>
+                              <MaterialIcons name="logout" size={13} color="#dc2626" style={{ marginRight: 4 }} />
+                              <Text style={styles.timeTagText}>
+                                {log.clock_out ? log.clock_out.substring(0, 5) : '--:--'}
+                              </Text>
+                            </View>
+                          </View>
+
+                          {/* Pill Indicators */}
+                          <View style={styles.timelinePillRow}>
                             {isLate ? (
-                              <View style={[styles.logMiniBadge, { backgroundColor: '#fee2e2' }]}>
-                                <Text style={[styles.logMiniBadgeText, { color: '#dc2626' }]}>
-                                  Telat {log.late_minutes}m
+                              <View style={[styles.timelinePill, { backgroundColor: '#fee2e2' }]}>
+                                <Text style={[styles.timelinePillText, { color: '#dc2626' }]}>
+                                  Telat {log.late_minutes} Menit
                                 </Text>
                               </View>
                             ) : (
-                              <View style={[styles.logMiniBadge, { backgroundColor: '#dcfce7' }]}>
-                                <Text style={[styles.logMiniBadgeText, { color: '#166534' }]}>
+                              <View style={[styles.timelinePill, { backgroundColor: '#dcfce7' }]}>
+                                <Text style={[styles.timelinePillText, { color: '#166534' }]}>
                                   Tepat Waktu
                                 </Text>
                               </View>
                             )}
+
                             {isIncomplete ? (
-                              <View style={[styles.logMiniBadge, { backgroundColor: '#fef3c7', marginLeft: 4 }]}>
-                                <Text style={[styles.logMiniBadgeText, { color: '#b45309' }]}>
-                                  No Out
+                              <View style={[styles.timelinePill, { backgroundColor: '#fef3c7', marginLeft: 4 }]}>
+                                <Text style={[styles.timelinePillText, { color: '#b45309' }]}>
+                                  No Checkout
                                 </Text>
                               </View>
                             ) : null}
@@ -881,151 +854,17 @@ export default function EvaluasiScreen() {
                     );
                   })
                 ) : (
-                  <Text style={styles.noLogsText}>Tidak ada log presensi khusus tercatat.</Text>
+                  <Text style={styles.emptyLogsText}>Tidak ada catatan log harian.</Text>
                 )}
 
-                <View style={{ height: 30 }} />
+                <View style={{ height: 40 }} />
               </ScrollView>
             )}
           </View>
         </View>
       </Modal>
 
-      {/* DETAIL MODAL TIM CABANG */}
-      <Modal
-        visible={teamDetailModalVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setTeamDetailModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Detail Disiplin Tim</Text>
-                <Text style={styles.modalSubtitle}>
-                  {selectedTeamMember?.employee?.name || 'Karyawan'}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.modalCloseBtn}
-                onPress={() => setTeamDetailModalVisible(false)}
-              >
-                <MaterialIcons name="close" size={22} color="#64748b" />
-              </TouchableOpacity>
-            </View>
-
-            {selectedTeamMember && (
-              <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-                {/* Score Banner */}
-                <View style={[
-                  styles.modalScoreCard,
-                  {
-                    backgroundColor: getPredicateTheme(selectedTeamMember.predicate, selectedTeamMember.score).bg,
-                    borderColor: getPredicateTheme(selectedTeamMember.predicate, selectedTeamMember.score).border,
-                  }
-                ]}>
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={[
-                      styles.modalScoreBig,
-                      { color: getPredicateTheme(selectedTeamMember.predicate, selectedTeamMember.score).text }
-                    ]}>
-                      {Number(selectedTeamMember.score).toFixed(1)}
-                    </Text>
-                    <View style={[
-                      styles.predicateBadge,
-                      { backgroundColor: getPredicateTheme(selectedTeamMember.predicate, selectedTeamMember.score).badgeBg, marginTop: 4 }
-                    ]}>
-                      <Text style={styles.predicateBadgeText}>{selectedTeamMember.predicate}</Text>
-                    </View>
-                    <Text style={styles.modalStatusText}>
-                      Departemen: <Text style={{ fontWeight: 'bold' }}>{selectedTeamMember.department}</Text>
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Score Breakdown from detail_json */}
-                {selectedTeamMember.detail_json?.scores ? (
-                  <View style={styles.teamScoreBreakdownCard}>
-                    <Text style={styles.modalSectionHeading}>Komponen Penilaian:</Text>
-                    <View style={styles.teamScoreRow}>
-                      <Text style={styles.teamScoreLbl}>Skor Kehadiran:</Text>
-                      <Text style={styles.teamScoreVal}>{selectedTeamMember.detail_json.scores.attendance_score} pts</Text>
-                    </View>
-                    <View style={styles.teamScoreRow}>
-                      <Text style={styles.teamScoreLbl}>Skor Perilaku & Tata Tertib:</Text>
-                      <Text style={styles.teamScoreVal}>{selectedTeamMember.detail_json.scores.conduct_score} pts</Text>
-                    </View>
-                  </View>
-                ) : null}
-
-                {/* Review Note */}
-                {selectedTeamMember.review_note ? (
-                  <View style={styles.modalReviewNoteCard}>
-                    <MaterialIcons name="verified-user" size={18} color="#6366f1" style={{ marginRight: 8, marginTop: 2 }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.modalReviewNoteTitle}>Catatan Owner:</Text>
-                      <Text style={styles.modalReviewNoteContent}>"{selectedTeamMember.review_note}"</Text>
-                    </View>
-                  </View>
-                ) : null}
-
-                {/* Stats */}
-                <Text style={styles.modalSectionHeading}>Rekap Bulan Ini</Text>
-                <View style={styles.modalStatsGrid}>
-                  <View style={styles.modalStatCell}>
-                    <Text style={styles.modalStatVal}>{selectedTeamMember.present_days}/{selectedTeamMember.total_work_days}</Text>
-                    <Text style={styles.modalStatLbl}>Hari Hadir</Text>
-                  </View>
-                  <View style={styles.modalStatCell}>
-                    <Text style={styles.modalStatVal}>{selectedTeamMember.consistency_pct}%</Text>
-                    <Text style={styles.modalStatLbl}>Konsistensi</Text>
-                  </View>
-                  <View style={styles.modalStatCell}>
-                    <Text style={[styles.modalStatVal, { color: '#ea580c' }]}>
-                      {selectedTeamMember.late_count}x ({selectedTeamMember.total_late_minutes}m)
-                    </Text>
-                    <Text style={styles.modalStatLbl}>Terlambat</Text>
-                  </View>
-                  <View style={styles.modalStatCell}>
-                    <Text style={[styles.modalStatVal, { color: '#dc2626' }]}>{selectedTeamMember.absent_count}</Text>
-                    <Text style={styles.modalStatLbl}>Alpha</Text>
-                  </View>
-                </View>
-
-                {/* Logs if available */}
-                {selectedTeamMember.detail_json?.attendance_logs && selectedTeamMember.detail_json.attendance_logs.length > 0 ? (
-                  <>
-                    <Text style={styles.modalSectionHeading}>Log Presensi Harian</Text>
-                    {selectedTeamMember.detail_json.attendance_logs.map((l, idx) => (
-                      <View key={idx} style={styles.logItemRow}>
-                        <View style={styles.logDateCol}>
-                          <Text style={styles.logDateText}>{l.date}</Text>
-                          <Text style={styles.logStatusText}>{l.status}</Text>
-                        </View>
-                        <View style={styles.logTimeCol}>
-                          <Text style={styles.logTimeVal}>
-                            {l.clock_in ? l.clock_in.substring(0, 5) : '--:--'} - {l.clock_out ? l.clock_out.substring(0, 5) : '--:--'}
-                          </Text>
-                          {l.is_late ? (
-                            <View style={[styles.logMiniBadge, { backgroundColor: '#fee2e2' }]}>
-                              <Text style={[styles.logMiniBadgeText, { color: '#dc2626' }]}>Telat {l.late_minutes}m</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                      </View>
-                    ))}
-                  </>
-                ) : null}
-
-                <View style={{ height: 30 }} />
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* YEAR PICKER MODAL */}
+      {/* 6. YEAR PICKER MODAL */}
       <Modal
         visible={yearPickerVisible}
         transparent={true}
@@ -1033,28 +872,28 @@ export default function EvaluasiScreen() {
         onRequestClose={() => setYearPickerVisible(false)}
       >
         <TouchableOpacity
-          style={styles.yearPickerOverlay}
+          style={styles.pickerBackdrop}
           activeOpacity={1}
           onPress={() => setYearPickerVisible(false)}
         >
-          <View style={styles.yearPickerContent}>
-            <Text style={styles.yearPickerTitle}>Pilih Tahun Penilaian</Text>
+          <View style={styles.pickerCard}>
+            <Text style={styles.pickerTitle}>Pilih Tahun Penilaian</Text>
             {availableYears.map((yr) => {
               const isSelected = yr === selectedYear;
               return (
                 <TouchableOpacity
                   key={yr}
-                  style={[styles.yearPickerItem, isSelected && styles.yearPickerItemActive]}
+                  style={[styles.pickerItem, isSelected && styles.pickerItemActive]}
                   onPress={() => {
                     setSelectedYear(yr);
                     setYearPickerVisible(false);
                   }}
                 >
-                  <Text style={[styles.yearPickerItemText, isSelected && styles.yearPickerItemTextActive]}>
+                  <Text style={[styles.pickerItemText, isSelected && styles.pickerItemTextActive]}>
                     Tahun {yr}
                   </Text>
                   {isSelected ? (
-                    <MaterialIcons name="check" size={20} color={theme.colors.primary} />
+                    <MaterialIcons name="check-circle" size={20} color={theme.colors.primary} />
                   ) : null}
                 </TouchableOpacity>
               );
@@ -1069,169 +908,190 @@ export default function EvaluasiScreen() {
 const styles = StyleSheet.create({
   rootWrapper: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f1f5f9',
   },
-  headerContainer: {
+
+  starsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  // Header Hero
+  headerHeroContainer: {
     backgroundColor: theme.colors.primary,
     paddingHorizontal: 16,
     paddingBottom: 16,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
   },
-  headerTop: {
+  headerTopBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
   },
-  headerSub: {
+  headerSubtitle: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.75)',
+    color: 'rgba(255, 255, 255, 0.75)',
     fontWeight: '500',
+    letterSpacing: 0.3,
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#ffffff',
   },
-  yearButton: {
+  yearPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
   },
-  yearButtonText: {
+  yearPillText: {
+    fontSize: 13,
     color: '#ffffff',
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
+  },
+  backButton: {
+    width: 38,
+    height: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: -4,
   },
 
-  // Hero Card
-  heroScoreCard: {
+  // Elevated Hero Scorecard
+  scoreHeroCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 14,
-    marginTop: 4,
+    borderRadius: 20,
+    padding: 16,
     marginBottom: 14,
-    elevation: 4,
+    elevation: 5,
     shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
   },
-  heroScoreRow: {
+  scoreHeroRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  scoreCircleWrapper: {
-    marginRight: 14,
-  },
-  scoreCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    borderWidth: 4,
+  gaugeOuter: {
+    width: 100,
+    height: 86,
+    borderRadius: 18,
+    borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
+    padding: 6,
   },
-  scoreText: {
-    fontSize: 20,
+  starCountLabel: {
+    fontSize: 12,
     fontWeight: 'bold',
+    marginTop: 4,
   },
-  scoreScale: {
-    fontSize: 9,
+  gaugeScale: {
+    fontSize: 8,
+    fontWeight: '800',
     color: '#94a3b8',
-    fontWeight: '600',
+    marginTop: 2,
+    letterSpacing: 0.4,
   },
-  heroSummaryDetails: {
+  heroRightContent: {
     flex: 1,
+    marginLeft: 14,
   },
-  predicateBadge: {
+  heroPredicatePill: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-    marginBottom: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
+    marginBottom: 6,
   },
-  predicateBadgeText: {
+  heroPredicateText: {
     color: '#ffffff',
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: 'bold',
   },
-  heroSummarySubtitle: {
+  heroPeriodNotice: {
     fontSize: 11,
     color: '#64748b',
     marginBottom: 8,
   },
-  heroMiniMetricsRow: {
+  heroMiniCardsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 8,
+    justifyContent: 'space-between',
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
     paddingVertical: 6,
     paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  heroMiniMetricItem: {
+  heroMiniCard: {
     flex: 1,
     alignItems: 'center',
   },
-  heroMiniMetricVal: {
+  heroMiniCardVal: {
     fontSize: 12,
     fontWeight: 'bold',
     color: '#0f172a',
+    marginTop: 1,
   },
-  heroMiniMetricLbl: {
-    fontSize: 9.5,
+  heroMiniCardLbl: {
+    fontSize: 9,
     color: '#64748b',
-  },
-  heroMiniMetricDivider: {
-    width: 1,
-    height: 16,
-    backgroundColor: '#cbd5e1',
+    fontWeight: '500',
   },
 
-  // Tabs
-  tabBar: {
+  // Segmented Tabs (2 Tabs Balanced)
+  tabsContainer: {
     flexDirection: 'row',
     backgroundColor: '#ffffff',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 4,
     elevation: 2,
     shadowColor: '#000',
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: 5,
   },
-  tabButton: {
+  tabItem: {
     flex: 1,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 9,
-    borderRadius: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
   },
-  tabButtonActive: {
+  tabItemActive: {
     backgroundColor: '#eff6ff',
   },
-  tabText: {
-    fontSize: 12,
+  tabLabel: {
+    fontSize: 13,
     fontWeight: '600',
     color: '#64748b',
   },
-  tabTextActive: {
+  tabLabelActive: {
     color: theme.colors.primary,
     fontWeight: 'bold',
   },
 
-  // Scroll Content
+  // Content Scroll
   contentScroll: {
     flex: 1,
   },
   contentScrollInner: {
     padding: 16,
+    flexGrow: 1,
   },
   centerLoading: {
     alignItems: 'center',
@@ -1241,679 +1101,707 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 13,
     color: '#64748b',
-    marginTop: 10,
+    marginTop: 12,
+    fontWeight: '500',
   },
 
-  sectionHeaderRow: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#0f172a',
   },
-  sectionBadge: {
+  sectionSubtitle: {
     fontSize: 11,
-    fontWeight: '600',
-    color: theme.colors.primary,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  countBadge: {
     backgroundColor: '#eff6ff',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  countBadgeText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: theme.colors.primary,
   },
 
-  // Monthly Card
-  monthlyCard: {
+  // Card Item (Bulanan Approved)
+  cardItem: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  cardMonthTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  cardMonthText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginRight: 6,
+  },
+  cardYearText: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  cardWorkingDaysText: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  statusPillText: {
+    fontSize: 10.5,
+    fontWeight: 'bold',
+  },
+
+  // Card Item (Masa Pemantauan - Belum di-validasi)
+  monitoringCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#fde68a',
     elevation: 2,
     shadowColor: '#000',
     shadowOpacity: 0.04,
     shadowRadius: 6,
   },
-  monthCardTop: {
+  monitoringHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  monthHeaderRow: {
+  monitoringPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    marginBottom: 4,
+    backgroundColor: '#fffbeb',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#fde68a',
   },
-  monthName: {
-    fontSize: 16,
+  monitoringPillText: {
+    fontSize: 11,
     fontWeight: 'bold',
-    color: '#0f172a',
-    marginRight: 8,
+    color: '#b45309',
   },
-  monthSubText: {
-    fontSize: 11.5,
-    color: '#64748b',
-  },
-  statusBadge: {
+  monitoringNoticeBox: {
     flexDirection: 'row',
+    backgroundColor: '#fffbeb',
+    borderRadius: 14,
+    padding: 12,
     alignItems: 'center',
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#fef3c7',
   },
-  statusBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  scoreBadgeBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    borderWidth: 1.5,
+  monitoringIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fef3c7',
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
   },
-  scoreBadgeVal: {
-    fontSize: 15,
+  monitoringTitle: {
+    fontSize: 13.5,
     fontWeight: 'bold',
+    color: '#92400e',
+    marginBottom: 3,
   },
-  scoreBadgeLbl: {
-    fontSize: 8.5,
-    fontWeight: '600',
+  monitoringDesc: {
+    fontSize: 11.5,
+    color: '#78350f',
+    lineHeight: 17,
   },
-  predicateRowBanner: {
+
+  // Score Banner in Card (Stars Display)
+  scoreBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  scoreBannerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 10,
   },
-  predicateRowText: {
-    fontSize: 12,
+  scoreBannerLbl: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#64748b',
+    letterSpacing: 0.5,
   },
-  metricsGrid: {
+  scoreBannerPredicate: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginTop: 1,
+  },
+
+  // Progress Bar
+  progressContainer: {
+    marginBottom: 12,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  progressLabel: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  progressPercent: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#0f172a',
+  },
+  progressTrack: {
+    height: 6,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 3,
+  },
+
+  // 4 Mini Stat Badges
+  statGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     backgroundColor: '#f8fafc',
-    borderRadius: 10,
-    padding: 8,
-    marginBottom: 10,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  metricGridItem: {
+  statCell: {
     width: '50%',
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 4,
     paddingHorizontal: 4,
   },
-  metricGridVal: {
+  statCellVal: {
     fontSize: 12,
     fontWeight: 'bold',
     color: '#0f172a',
   },
-  metricGridLbl: {
-    fontSize: 10,
+  statCellLbl: {
+    fontSize: 9.5,
     color: '#64748b',
   },
-  reviewNoteBanner: {
+
+  // Owner Review Box
+  ownerReviewBox: {
     flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 8,
-    padding: 8,
-    marginBottom: 10,
+    backgroundColor: '#f5f3ff',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#ddd6fe',
+    marginBottom: 12,
   },
-  reviewNoteTitle: {
-    fontSize: 10.5,
-    fontWeight: 'bold',
-    color: '#334155',
-  },
-  reviewNoteContent: {
-    fontSize: 11,
-    color: '#475569',
+  ownerReviewText: {
+    fontSize: 11.5,
+    color: '#4c1d95',
     fontStyle: 'italic',
-    marginTop: 1,
+    lineHeight: 16,
   },
-  reviewNoteDate: {
+  ownerReviewDate: {
     fontSize: 9.5,
-    color: '#94a3b8',
-    marginTop: 2,
+    color: '#7c3aed',
+    marginTop: 4,
   },
-  cardFooterAction: {
+
+  // Action Row
+  cardActionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 8,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
   },
-  viewDetailActionText: {
+  cardActionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.primary,
+  },
+  cardActionArrow: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: theme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Tab 2: Profile & Matrix
+  profileBadgeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  profileAvatarCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: theme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileBadgeName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#0f172a',
+  },
+  profileBadgeNik: {
+    fontSize: 11.5,
+    color: '#64748b',
+    marginTop: 1,
+  },
+  profileBranchPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  profileBranchText: {
     fontSize: 11.5,
     color: theme.colors.primary,
     fontWeight: '600',
   },
 
-  // Tab 2: Rekap Tahunan
-  annualProfileCard: {
+  annualMetricRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    marginBottom: 14,
   },
-  annualAvatarBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  annualName: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#0f172a',
-  },
-  annualSub: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 1,
-  },
-  annualBranch: {
-    fontSize: 11,
-    color: theme.colors.primary,
-    fontWeight: '500',
-    marginTop: 1,
-  },
-  annualStatsRow: {
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  annualStatBox: {
+  annualMetricCard: {
     flex: 1,
     backgroundColor: '#ffffff',
-    borderRadius: 12,
-    paddingVertical: 12,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
     alignItems: 'center',
     marginHorizontal: 3,
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
   },
-  annualStatVal: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: theme.colors.primary,
-  },
-  annualStatLbl: {
-    fontSize: 11,
+  annualMetricLabel: {
+    fontSize: 9.5,
+    fontWeight: '800',
     color: '#64748b',
-    marginTop: 2,
+    letterSpacing: 0.5,
   },
-  matrixCard: {
+  annualMetricValue: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: theme.colors.primary,
+    marginVertical: 4,
+  },
+  annualMetricSub: {
+    fontSize: 10.5,
+    color: '#475569',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+
+  matrixContainer: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
-  matrixTitle: {
+  matrixHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  matrixMainTitle: {
     fontSize: 15,
     fontWeight: 'bold',
     color: '#0f172a',
   },
-  matrixSub: {
+  matrixSubTitle: {
     fontSize: 11,
     color: '#64748b',
-    marginBottom: 12,
+    marginTop: 1,
   },
   matrixGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
   },
-  matrixItem: {
+  matrixCell: {
     width: (width - 64) / 4,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 4,
     alignItems: 'center',
     marginBottom: 8,
   },
-  matrixMonthName: {
-    fontSize: 11,
+  matrixCellMonth: {
+    fontSize: 11.5,
     fontWeight: 'bold',
     color: '#334155',
   },
-  matrixScore: {
-    fontSize: 13,
+  matrixStarNum: {
+    fontSize: 11,
     fontWeight: 'bold',
-    marginVertical: 2,
+    marginLeft: 2,
   },
-  matrixStatus: {
+  matrixDraftLabel: {
     fontSize: 8.5,
-    fontWeight: '600',
+    fontWeight: 'bold',
+    color: '#b45309',
+    marginTop: 2,
   },
-  matrixEmptyText: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginTop: 6,
+  matrixMiniDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginTop: 4,
   },
-  breakdownCard: {
+  matrixCellEmpty: {
+    fontSize: 14,
+    color: '#cbd5e1',
+    marginTop: 4,
+  },
+
+  distributionCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
-  breakdownTitle: {
+  distributionTitle: {
     fontSize: 14,
     fontWeight: 'bold',
     color: '#0f172a',
-    marginBottom: 10,
+    marginBottom: 12,
   },
-  predicateCountItem: {
+  distRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: '#f8fafc',
   },
-  predicateDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
+  distStarsWrap: {
+    width: 90,
   },
-  predicateCountLabel: {
+  distLabel: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 11.5,
     color: '#334155',
+    marginLeft: 6,
   },
-  predicateCountVal: {
+  distValue: {
     fontSize: 12,
     fontWeight: 'bold',
     color: '#0f172a',
   },
 
-  // Tab 3: Tim Cabang
-  teamMonthFilterCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  teamMonthFilterLbl: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: 8,
-  },
-  teamMonthScroll: {
-    flexDirection: 'row',
-  },
-  teamMonthChip: {
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
-  },
-  teamMonthChipActive: {
-    backgroundColor: theme.colors.primary,
-  },
-  teamMonthChipText: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  teamMonthChipTextActive: {
-    color: '#ffffff',
-  },
-  teamSummaryBanner: {
-    flexDirection: 'row',
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  teamSummaryItem: {
+  // Modal / Bottom Sheet
+  modalBackdrop: {
     flex: 1,
-    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'flex-end',
   },
-  teamSummaryVal: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#0f172a',
-  },
-  teamSummaryLbl: {
-    fontSize: 10.5,
-    color: '#64748b',
-  },
-  teamSummaryDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: '#e2e8f0',
-  },
-  teamListContainer: {
-    marginTop: 2,
-  },
-  teamMemberCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  modalSheet: {
     backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '90%',
+    paddingBottom: 24,
   },
-  rankBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  modalGrabHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 2.5,
     backgroundColor: '#cbd5e1',
-    justifyContent: 'center',
-    alignItems: 'center',
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 4,
   },
-  rankBadgeText: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  teamMemberHeader: {
+  modalHeadBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
   },
-  teamMemberName: {
-    flex: 1,
-    fontSize: 14,
+  modalHeadTitle: {
+    fontSize: 17,
     fontWeight: 'bold',
     color: '#0f172a',
-    marginRight: 8,
   },
-  scorePill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  scorePillText: {
+  modalHeadSubtitle: {
     fontSize: 12,
-    fontWeight: 'bold',
-  },
-  teamMemberDept: {
-    fontSize: 11,
     color: '#64748b',
     marginTop: 1,
   },
-  teamMemberFooter: {
-    flexDirection: 'row',
+  modalCloseCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
     alignItems: 'center',
-    flexWrap: 'wrap',
+  },
+  modalBodyScroll: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+  },
+  modalScoreHero: {
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  modalPredBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 14,
+  },
+  modalPredBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  modalStatusNote: {
+    fontSize: 11.5,
+    color: '#64748b',
     marginTop: 6,
   },
-  teamPredicatePill: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginRight: 6,
-  },
-  teamPredicatePillText: {
-    color: '#ffffff',
-    fontSize: 9.5,
-    fontWeight: 'bold',
-  },
-  teamMemberStatsText: {
-    fontSize: 10.5,
-    color: '#64748b',
-  },
-  ownerApprovedTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  ownerApprovedTagText: {
-    fontSize: 10,
-    color: '#10b981',
-    fontWeight: '600',
-  },
-
-  // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContainer: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '88%',
-    paddingBottom: 20,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#0f172a',
-  },
-  modalSubtitle: {
-    fontSize: 12,
-    color: '#64748b',
-  },
-  modalCloseBtn: {
-    padding: 6,
-  },
-  modalScroll: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
-  modalScoreCard: {
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    marginBottom: 12,
-  },
-  modalScoreBig: {
-    fontSize: 32,
-    fontWeight: 'bold',
-  },
-  modalStatusText: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 4,
-  },
-  modalReviewNoteCard: {
+  modalOwnerCard: {
     flexDirection: 'row',
     backgroundColor: '#eef2ff',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 12,
-    marginBottom: 12,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: '#c7d2fe',
   },
-  modalReviewNoteTitle: {
+  modalOwnerTitle: {
     fontSize: 11,
     fontWeight: 'bold',
     color: '#3730a3',
   },
-  modalReviewNoteContent: {
-    fontSize: 12,
+  modalOwnerText: {
+    fontSize: 12.5,
     color: '#4338ca',
     fontStyle: 'italic',
     marginTop: 2,
+    lineHeight: 18,
   },
-  modalReviewNoteDate: {
+  modalOwnerDate: {
     fontSize: 10,
     color: '#6366f1',
     marginTop: 4,
   },
-  modalSectionHeading: {
-    fontSize: 13,
+  modalSectionTitle: {
+    fontSize: 13.5,
     fontWeight: 'bold',
     color: '#0f172a',
-    marginVertical: 8,
+    marginVertical: 10,
   },
   modalStatsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     backgroundColor: '#f8fafc',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 8,
-    marginBottom: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  modalStatCell: {
+  modalStatTile: {
     width: '33.33%',
-    padding: 6,
+    padding: 8,
     alignItems: 'center',
   },
-  modalStatVal: {
+  modalStatTileVal: {
     fontSize: 13,
     fontWeight: 'bold',
     color: '#0f172a',
   },
-  modalStatLbl: {
+  modalStatTileLbl: {
     fontSize: 10,
     color: '#64748b',
     marginTop: 2,
   },
-  logItemRow: {
+
+  // Timeline List
+  timelineItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  logDateCol: {
-    flex: 1,
+  timelineDateBox: {
+    width: 60,
+    alignItems: 'center',
+    paddingRight: 10,
+    borderRightWidth: 1,
+    borderRightColor: '#f1f5f9',
   },
-  logDateText: {
-    fontSize: 12.5,
+  timelineDateNum: {
+    fontSize: 13,
     fontWeight: 'bold',
     color: '#0f172a',
   },
-  logStatusText: {
-    fontSize: 10.5,
+  timelineDayName: {
+    fontSize: 10,
     color: '#64748b',
-    textTransform: 'capitalize',
+    marginTop: 1,
   },
-  logTimeCol: {
-    alignItems: 'flex-end',
+  timelineContent: {
+    flex: 1,
+    paddingLeft: 12,
   },
-  logTimeVal: {
-    fontSize: 12.5,
-    fontWeight: '600',
+  timelineTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  timeTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  timeTagText: {
+    fontSize: 11.5,
+    fontWeight: 'bold',
     color: '#334155',
   },
-  logBadgeRow: {
+  timelinePillRow: {
     flexDirection: 'row',
-    marginTop: 3,
+    marginTop: 6,
   },
-  logMiniBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
+  timelinePill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: 6,
   },
-  logMiniBadgeText: {
+  timelinePillText: {
     fontSize: 9.5,
-    fontWeight: '700',
+    fontWeight: 'bold',
   },
-  noLogsText: {
+  emptyLogsText: {
     fontSize: 12,
     color: '#94a3b8',
     fontStyle: 'italic',
-    marginVertical: 8,
-  },
-  teamScoreBreakdownCard: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 10,
-  },
-  teamScoreRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  teamScoreLbl: {
-    fontSize: 12,
-    color: '#475569',
-  },
-  teamScoreVal: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#0f172a',
+    marginVertical: 10,
   },
 
   // Year Picker
-  yearPickerOverlay: {
+  pickerBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 24,
   },
-  yearPickerContent: {
+  pickerCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
-    width: '80%',
-    elevation: 5,
+    borderRadius: 20,
+    padding: 18,
+    width: '85%',
+    elevation: 6,
   },
-  yearPickerTitle: {
+  pickerTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#0f172a',
-    marginBottom: 12,
+    marginBottom: 14,
     textAlign: 'center',
   },
-  yearPickerItem: {
+  pickerItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 4,
   },
-  yearPickerItemActive: {
+  pickerItemActive: {
     backgroundColor: '#eff6ff',
-    borderRadius: 8,
   },
-  yearPickerItemText: {
+  pickerItemText: {
     fontSize: 14,
     color: '#334155',
   },
-  yearPickerItemTextActive: {
+  pickerItemTextActive: {
     fontWeight: 'bold',
     color: theme.colors.primary,
   },
@@ -1921,20 +1809,20 @@ const styles = StyleSheet.create({
   // Empty State
   emptyContainer: {
     alignItems: 'center',
-    paddingVertical: 40,
-    paddingHorizontal: 20,
+    paddingVertical: 48,
+    paddingHorizontal: 24,
   },
   emptyTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#334155',
-    marginTop: 10,
+    marginTop: 12,
   },
   emptyDesc: {
     fontSize: 12,
     color: '#64748b',
     textAlign: 'center',
-    marginTop: 4,
+    marginTop: 6,
+    lineHeight: 18,
   },
 });
-

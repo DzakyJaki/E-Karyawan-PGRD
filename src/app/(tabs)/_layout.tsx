@@ -98,8 +98,9 @@ export default function TabsLayout() {
           tabBarIcon: ({ color }) => <MaterialIcons name="person" size={24} color={color as string} />
         }} 
         listeners={({ navigation }) => ({
-          tabPress: () => {
-            navigation.navigate('profile', { screen: 'index' });
+          tabPress: (e) => {
+            e.preventDefault();
+            router.replace('/(tabs)/profile');
           },
         })}
       />

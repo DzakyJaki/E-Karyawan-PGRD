@@ -204,7 +204,7 @@ export function ProfileScreen() {
         { icon: 'assignment-ind', label: 'Data Karyawan', color: theme.colors.primary, route: '/profile/employee-data' },
         { icon: 'history-toggle-off', label: 'Form Pengajuan Presensi', color: '#ea580c', route: '/profile/late-explanation' },
         { icon: 'account-balance-wallet', label: 'Kasbon & Pinjaman', color: '#059669', route: '/profile/kasbon' },
-        { icon: 'insights', label: 'Hasil Evaluasi Kedisiplinan', color: '#8b5cf6', route: '/profile/evaluasi' },
+        { icon: 'insights', label: 'Penilaian Kinerja', color: '#8b5cf6', route: '/profile/evaluasi' },
       ]
     },
     {

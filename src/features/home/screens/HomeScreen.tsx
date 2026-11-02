@@ -710,7 +710,7 @@ export function HomeScreen() {
             <MenuButton
               icon="insights"
               color="#8b5cf6"
-              label="Hasil Evaluasi"
+              label="Penilaian Kinerja"
               route="/profile/evaluasi"
               router={router}
             />

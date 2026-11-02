@@ -84,11 +84,11 @@ const TUTORIAL_TOPICS: TutorialTopic[] = [
   {
     id: 'evaluasi',
     icon: 'insights',
-    title: 'Hasil Evaluasi Kedisiplinan',
-    shortDesc: 'Rapor skor kehadiran, predikat tahunan & catatan owner',
+    title: 'Penilaian Kinerja',
+    shortDesc: 'Rapor kehadiran, predikat tahunan & catatan personalia',
     route: '/(tabs)/profile/evaluasi',
-    routeLabel: 'Buka Halaman Hasil Evaluasi',
-    guideText: `📊 PANDUAN HASIL EVALUASI KEDISIPLINAN:\n\n1️⃣ Akses Menu Evaluasi:\n   • Buka menu "Hasil Evaluasi" dari Menu Cepat Beranda atau melalui Profil > Administrasi.\n\n2️⃣ Komponen Penilaian:\n   • Skor Evaluasi dihitung berdasarkan konsistensi kehadiran harian serta rekam jejak tata tertib (keterlambatan, pulang lebih awal, kepatuhan istirahat, dan kelengkapan presensi checkout).\n\n3️⃣ Predikat Kedisiplinan:\n   • Sangat Disiplin (Skor ≥ 90)\n   • Disiplin (Skor 80 - 89.9)\n   • Cukup Disiplin (Skor 70 - 79.9)\n   • Kurang Disiplin (Skor 50 - 69.9)\n   • Tidak Disiplin (Skor < 50)\n\n4️⃣ Pengesahan Resmi Owner:\n   • Setiap evaluasi bulanan yang disahkan langsung oleh Owner PT. Pagaruyung dilengkapi catatan persetujuan resmi dan tanggal verifikasi.\n\n5️⃣ Tab Rekap 12 Bulan & Tim Cabang:\n   • Gunakan tab "Rekap 12 Bulan" untuk melihat tren kedisiplinan sepanjang tahun.\n   • Tab "Tim Cabang" menampilkan peringkat kedisiplinan seluruh rekan kerja satu cabang.`
+    routeLabel: 'Buka Halaman Penilaian Kinerja',
+    guideText: `📊 PANDUAN PENILAIAN KINERJA:\n\n1️⃣ Akses Menu Penilaian Kinerja:\n   • Buka menu "Penilaian Kinerja" dari Menu Cepat Beranda atau melalui Profil > Administrasi.\n\n2️⃣ Komponen Penilaian:\n   • Evaluasi dihitung berdasarkan konsistensi kehadiran harian serta rekam jejak tata tertib (keterlambatan, pulang lebih awal, kepatuhan istirahat, dan kelengkapan presensi checkout).\n\n3️⃣ Predikat Kinerja:\n   • Sangat Disiplin (5 Bintang ⭐⭐⭐⭐⭐)\n   • Disiplin (4 Bintang ⭐⭐⭐⭐)\n   • Cukup Disiplin (3 Bintang ⭐⭐⭐)\n   • Kurang Disiplin (2 Bintang ⭐⭐)\n   • Tidak Disiplin (1 Bintang ⭐)\n\n4️⃣ Pengesahan Resmi Personalia:\n   • Setiap evaluasi bulanan yang disahkan langsung oleh Personalia dilengkapi catatan persetujuan resmi dan tanggal verifikasi.\n\n5️⃣ Tab Rekap 12 Bulan:\n   • Gunakan tab "Rekap 12 Bulan" untuk melihat matriks bintang bulanan serta grafik distribusi predikat kedisiplinan Anda sepanjang tahun.`
   },
   {
     id: 'profil',

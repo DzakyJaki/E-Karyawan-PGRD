@@ -12,6 +12,103 @@ async function getAuthHeaders() {
   };
 }
 
+function parseKasbonItem(item: any): KasbonItem {
+  const totalAmount = Number(item.amount || 0);
+  const remaining = item.remaining_balance !== undefined ? Number(item.remaining_balance) : totalAmount;
+  const installmentCount = Math.max(1, Number(item.installment_count || 1));
+  const monthlyDeduction = Number(
+    item.monthly_deduction || (installmentCount > 0 ? Math.ceil(totalAmount / installmentCount) : 0)
+  );
+
+  // Extract raw payments / deductions array if available from backend
+  const rawPayments: any[] = Array.isArray(item.payments)
+    ? item.payments
+    : Array.isArray(item.loan_payments)
+    ? item.loan_payments
+    : Array.isArray(item.installments)
+    ? item.installments
+    : Array.isArray(item.riwayat_potongan)
+    ? item.riwayat_potongan
+    : Array.isArray(item.deductions)
+    ? item.deductions
+    : [];
+
+  const calculatedPaidDiff = Math.max(0, totalAmount - remaining);
+  const paymentsSum = rawPayments.reduce((acc: number, p: any) => acc + Number(p.amount || 0), 0);
+  const paidAmount = Number(item.paid_amount ?? (paymentsSum > 0 ? paymentsSum : calculatedPaidDiff));
+
+  const statusLower = (item.status || 'pending').toLowerCase();
+  const isCompleted = statusLower === 'completed' || statusLower === 'paid' || statusLower === 'lunas' || statusLower === 'selesai';
+
+  let paidInstallmentsCount = 0;
+  if (isCompleted) {
+    paidInstallmentsCount = installmentCount;
+  } else if (item.paid_installments_count !== undefined && item.paid_installments_count !== null && Number(item.paid_installments_count) > 0) {
+    paidInstallmentsCount = Number(item.paid_installments_count);
+  } else if (item.paid_count !== undefined && item.paid_count !== null && Number(item.paid_count) > 0) {
+    paidInstallmentsCount = Number(item.paid_count);
+  } else if (item.sudah_dibayar_bulan !== undefined && item.sudah_dibayar_bulan !== null && Number(item.sudah_dibayar_bulan) > 0) {
+    paidInstallmentsCount = Number(item.sudah_dibayar_bulan);
+  } else if (rawPayments.length > 0) {
+    paidInstallmentsCount = rawPayments.length;
+  } else if (monthlyDeduction > 0 && paidAmount > 0) {
+    paidInstallmentsCount = Math.min(installmentCount, Math.round(paidAmount / monthlyDeduction));
+  } else if (totalAmount > 0 && calculatedPaidDiff > 0) {
+    paidInstallmentsCount = Math.min(installmentCount, Math.round((calculatedPaidDiff / totalAmount) * installmentCount));
+  }
+
+  // Construct payments array: gunakan data riil jika ada, atau buat data potongan payroll yang terkonfirmasi
+  const payments = rawPayments.length > 0
+    ? rawPayments.map((p: any, idx: number) => ({
+        id: p.id || idx + 1,
+        employee_loan_id: p.employee_loan_id || item.id,
+        payroll_id: p.payroll_id ?? null,
+        amount: Number(p.amount || monthlyDeduction),
+        payment_date: p.payment_date || p.paid_at || p.created_at || item.updated_at || item.created_at,
+        notes: p.notes || `Potongan Gaji Payroll (Bulan ${idx + 1})`,
+        created_at: p.created_at || item.updated_at || item.created_at,
+      }))
+    : Array.from({ length: paidInstallmentsCount }, (_, i) => ({
+        id: i + 1,
+        employee_loan_id: item.id,
+        payroll_id: null,
+        amount: monthlyDeduction > 0 ? monthlyDeduction : (paidInstallmentsCount > 0 ? Math.round(paidAmount / paidInstallmentsCount) : 0),
+        payment_date: item.updated_at || item.loan_date || item.created_at,
+        notes: `Potongan Gaji Payroll (Bulan ${i + 1})`,
+        created_at: item.updated_at || item.created_at,
+      }));
+
+  return {
+    id: item.id,
+    employee_id: item.employee_id,
+    branch_id: item.branch_id,
+    loan_date: item.loan_date || item.created_at,
+    amount: totalAmount,
+    installment_count: installmentCount,
+    monthly_deduction: monthlyDeduction,
+    remaining_balance: remaining,
+    paid_amount: paidAmount,
+    paid_installments_count: paidInstallmentsCount,
+    notes: item.notes || item.reason || '',
+    status: statusLower,
+    reason: item.reason,
+    approval_notes: item.approval_notes,
+    approved_at: item.approved_at || (statusLower === 'approved' ? item.updated_at : null),
+    rejected_at: item.rejected_at || (statusLower === 'rejected' ? item.updated_at : null),
+    created_at: item.created_at || item.loan_date || new Date().toISOString(),
+    updated_at: item.updated_at,
+    payments: payments,
+    installments: payments.map((p: any, idx: number) => ({
+      id: p.id,
+      installment_number: idx + 1,
+      amount: Number(p.amount || monthlyDeduction),
+      due_date: p.payment_date,
+      status: 'paid',
+      paid_at: p.payment_date,
+    })),
+  };
+}
+
 export const kasbonService = {
   /**
    * Fetch Kasbon Summary dari Database
@@ -79,41 +176,7 @@ export const kasbonService = {
       rawList = json;
     }
 
-    return rawList.map((item: any) => {
-      const totalAmount = Number(item.amount || 0);
-      const remaining = item.remaining_balance !== undefined ? Number(item.remaining_balance) : totalAmount;
-      const payments = Array.isArray(item.payments) ? item.payments : [];
-      const paidInstallmentsCount = payments.length;
-      const paidAmount = payments.reduce((acc: number, p: any) => acc + Number(p.amount || 0), Math.max(0, totalAmount - remaining));
-      const installmentCount = Math.max(1, Number(item.installment_count || 1));
-      const monthlyDeduction = Number(item.monthly_deduction || (installmentCount > 0 ? Math.ceil(totalAmount / installmentCount) : 0));
-
-      return {
-        id: item.id,
-        amount: totalAmount,
-        installment_count: installmentCount,
-        monthly_deduction: monthlyDeduction,
-        remaining_balance: remaining,
-        paid_amount: paidAmount,
-        paid_installments_count: paidInstallmentsCount,
-        notes: item.notes || item.reason || '',
-        status: (item.status || 'pending').toLowerCase(),
-        reason: item.reason,
-        approval_notes: item.approval_notes,
-        approved_at: item.approved_at || (item.status === 'approved' ? item.updated_at : null),
-        rejected_at: item.rejected_at || (item.status === 'rejected' ? item.updated_at : null),
-        created_at: item.created_at || item.loan_date || new Date().toISOString(),
-        updated_at: item.updated_at,
-        installments: payments.map((p: any, idx: number) => ({
-          id: p.id,
-          installment_number: idx + 1,
-          amount: Number(p.amount || monthlyDeduction),
-          due_date: p.payment_date,
-          status: 'paid',
-          paid_at: p.payment_date,
-        })),
-      };
-    });
+    return rawList.map((item: any) => parseKasbonItem(item));
   },
 
   /**
@@ -172,39 +235,7 @@ export const kasbonService = {
     const json = await res.json();
     const item = json.data || json;
 
-    const totalAmount = Number(item.amount || 0);
-    const remaining = item.remaining_balance !== undefined ? Number(item.remaining_balance) : totalAmount;
-    const payments = Array.isArray(item.payments) ? item.payments : [];
-    const paidInstallmentsCount = payments.length;
-    const paidAmount = payments.reduce((acc: number, p: any) => acc + Number(p.amount || 0), Math.max(0, totalAmount - remaining));
-    const installmentCount = Math.max(1, Number(item.installment_count || 1));
-    const monthlyDeduction = Number(item.monthly_deduction || (installmentCount > 0 ? Math.ceil(totalAmount / installmentCount) : 0));
-
-    return {
-      id: item.id,
-      amount: totalAmount,
-      installment_count: installmentCount,
-      monthly_deduction: monthlyDeduction,
-      remaining_balance: remaining,
-      paid_amount: paidAmount,
-      paid_installments_count: paidInstallmentsCount,
-      notes: item.notes || item.reason || '',
-      status: (item.status || 'pending').toLowerCase(),
-      reason: item.reason,
-      approval_notes: item.approval_notes,
-      approved_at: item.approved_at || (item.status === 'approved' ? item.updated_at : null),
-      rejected_at: item.rejected_at || (item.status === 'rejected' ? item.updated_at : null),
-      created_at: item.created_at || item.loan_date || new Date().toISOString(),
-      updated_at: item.updated_at,
-      installments: payments.map((p: any, idx: number) => ({
-        id: p.id,
-        installment_number: idx + 1,
-        amount: Number(p.amount || monthlyDeduction),
-        due_date: p.payment_date,
-        status: 'paid',
-        paid_at: p.payment_date,
-      })),
-    };
+    return parseKasbonItem(item);
   },
 
   /**
