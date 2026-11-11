@@ -238,47 +238,86 @@ export function AttendanceScreen() {
           return;
         }
 
-        // Helper untuk memanggil navigator.geolocation dengan cache 0 (Anti-Stale Cache)
-        const fetchWebCoords = (timeoutMs = 12000): Promise<GeolocationPosition> => {
+        // Multi-sample watchPosition: Beri waktu Safari iOS mengunci satelit GPS (hingga akurasi <= 15m atau maks 5s)
+        const fetchAccurateWebCoords = (): Promise<GeolocationPosition> => {
           return new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: true,
-              timeout: timeoutMs,
-              maximumAge: 0, // KUNCI UTAMA SAFARI iOS: Jangan pakai posisi cache lama dari perjalanan/rumah!
-            });
+            let best: GeolocationPosition | null = null;
+            let watchId: number | null = null;
+            let done = false;
+
+            const timer = setTimeout(() => {
+              if (done) return;
+              done = true;
+              if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+              if (best) {
+                resolve(best);
+              } else {
+                reject(new Error('TIMEOUT_GPS'));
+              }
+            }, 5000);
+
+            try {
+              watchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                  if (done) return;
+                  if (!best || pos.coords.accuracy < best.coords.accuracy) {
+                    best = pos;
+                  }
+                  // Jika akurasi sudah mencapai tingkat satelit tinggi (<= 15 meter), langsung kunci
+                  if (pos.coords.accuracy <= 15) {
+                    done = true;
+                    clearTimeout(timer);
+                    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+                    resolve(pos);
+                  }
+                },
+                (err) => {
+                  if (done) return;
+                  if (!best) {
+                    done = true;
+                    clearTimeout(timer);
+                    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+                    reject(err);
+                  }
+                },
+                {
+                  enableHighAccuracy: true,
+                  timeout: 5000,
+                  maximumAge: 0 // Anti-stale cache
+                }
+              );
+            } catch (e) {
+              clearTimeout(timer);
+              reject(e);
+            }
           });
         };
 
         let geoPos: GeolocationPosition;
         try {
-          geoPos = await fetchWebCoords(12000);
+          geoPos = await fetchAccurateWebCoords();
         } catch (geoErr: any) {
-          if (geoErr?.code === 1) {
-            setLocationError('Izin akses GPS ditolak di browser. Silakan aktifkan izin lokasi di pengaturan browser.');
-          } else if (geoErr?.code === 2) {
-            setLocationError('Sinyal GPS tidak ditemukan. Pastikan Layanan Lokasi dan Wi-Fi aktif.');
-          } else if (geoErr?.code === 3) {
-            setLocationError('Pencarian sinyal GPS timeout. Silakan klik ikon segarkan lokasi.');
-          } else {
-            setLocationError('Gagal mendeteksi lokasi GPS di browser.');
-          }
-          setIsDetectingLocation(false);
-          return;
-        }
-
-        // Penanganan Khusus Safari iPhone di Web:
-        // Safari iOS saat pertama kali dibuka seringkali menyodorkan estimasi Cell Tower (BTS) dengan akurasi buruk (> 35 meter)
-        // sebelum chip GPS satelit berhasil mengunci (lock) posisi sebenarnya.
-        // Lakukan pembacaan kedua (second pass) jika akurasi masih kasar (> 30 meter) untuk mendapatkan lock satelit presisi.
-        if (isIosDevice && geoPos.coords.accuracy > 30) {
-          await new Promise((resolve) => setTimeout(resolve, 800));
+          // Fallback ke getCurrentPosition jika watchPosition gagal
           try {
-            const secondPass = await fetchWebCoords(10000);
-            if (secondPass.coords.accuracy <= geoPos.coords.accuracy) {
-              geoPos = secondPass;
+            geoPos = await new Promise<GeolocationPosition>((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                timeout: 8000,
+                maximumAge: 3000
+              });
+            });
+          } catch (fallbackErr: any) {
+            if (fallbackErr?.code === 1 || geoErr?.code === 1) {
+              setLocationError('Izin akses GPS ditolak di browser. Silakan aktifkan izin lokasi di pengaturan browser.');
+            } else if (fallbackErr?.code === 2 || geoErr?.code === 2) {
+              setLocationError('Sinyal GPS tidak ditemukan. Pastikan Layanan Lokasi dan Wi-Fi aktif.');
+            } else if (fallbackErr?.code === 3 || geoErr?.code === 3) {
+              setLocationError('Pencarian sinyal GPS timeout. Silakan klik tombol segarkan lokasi.');
+            } else {
+              setLocationError('Gagal mendeteksi lokasi GPS di browser.');
             }
-          } catch {
-            // Jika second pass timeout, tetap gunakan hasil pembacaan pertama
+            setIsDetectingLocation(false);
+            return;
           }
         }
 
@@ -333,8 +372,7 @@ export function AttendanceScreen() {
 
       setIsMockGps(false);
       // Filter Jitter GPS:
-      // Sinyal GPS satelit alami berfluktuasi 1-3 meter saat HP diletakkan diam di meja (GPS drift).
-      // Abaikan pergeseran kecil < 3 meter agar angka jarak tidak melompat-lompat saat HP tidak bergerak.
+      // Abaikan pergeseran kecil < 2 meter agar angka jarak tidak melompat-lompat saat HP tidak bergerak.
       setCurrentCoords(prev => {
         if (!prev) {
           return {
@@ -348,7 +386,7 @@ export function AttendanceScreen() {
           latitude,
           longitude
         );
-        if (shiftDist < 3) {
+        if (shiftDist < 2) {
           return prev;
         }
         return {
@@ -363,7 +401,7 @@ export function AttendanceScreen() {
     } finally {
       setIsDetectingLocation(false);
     }
-  }, [isIosDevice, showToast]);
+  }, [showToast]);
 
   // Fetch Riwayat Presensi
   const fetchAttendanceHistory = useCallback(async () => {
@@ -464,11 +502,91 @@ export function AttendanceScreen() {
     fetchProfile();
   }, [detectLocation, fetchAttendanceHistory, fetchWorkTime, fetchProfile]);
 
-  // Auto refresh GPS periodic
+  // Continuous GPS Watcher (Sangat krusial untuk Safari iOS Web & Mobile)
+  // Menjaga subsistem satelit GPS tetap aktif mengunci koordinat presisi tinggi saat layar dibuka
   useEffect(() => {
-    const interval = setInterval(detectLocation, 30000);
-    return () => clearInterval(interval);
-  }, [detectLocation]);
+    let isMounted = true;
+    let webWatchId: number | null = null;
+    let nativeLocationSub: Location.LocationSubscription | null = null;
+
+    const startWatching = async () => {
+      if (Platform.OS === 'web') {
+        if (typeof window === 'undefined' || !navigator.geolocation) return;
+
+        try {
+          webWatchId = navigator.geolocation.watchPosition(
+            (pos) => {
+              if (!isMounted) return;
+              const lat = pos.coords.latitude;
+              const lng = pos.coords.longitude;
+              const acc = pos.coords.accuracy != null ? Math.round(pos.coords.accuracy) : null;
+
+              if (acc != null) setGpsAccuracy(acc);
+              setIsMockGps(false);
+              setLocationError(null);
+
+              setCurrentCoords((prev) => {
+                if (!prev) return { latitude: lat, longitude: lng };
+                const shift = calculateDistanceMeters(prev.latitude, prev.longitude, lat, lng);
+                if (shift < 2) return prev;
+                return { latitude: lat, longitude: lng };
+              });
+            },
+            (err) => {
+              if (!isMounted) return;
+              console.log('Continuous web watch error:', err);
+            },
+            {
+              enableHighAccuracy: true,
+              maximumAge: 2000,
+              timeout: 15000
+            }
+          );
+        } catch (e) {
+          console.log('Web watchPosition failed:', e);
+        }
+      } else {
+        try {
+          const { status } = await Location.getForegroundPermissionsAsync();
+          if (status === 'granted') {
+            nativeLocationSub = await Location.watchPositionAsync(
+              {
+                accuracy: Location.Accuracy.BestForNavigation,
+                timeInterval: 4000,
+                distanceInterval: 2
+              },
+              (loc) => {
+                if (!isMounted) return;
+                if (loc.mocked) {
+                  setIsMockGps(true);
+                  return;
+                }
+                setGpsAccuracy(loc.coords.accuracy != null ? Math.round(loc.coords.accuracy) : null);
+                setCurrentCoords({
+                  latitude: loc.coords.latitude,
+                  longitude: loc.coords.longitude
+                });
+              }
+            );
+          }
+        } catch (e) {
+          console.log('Native watchPositionAsync failed:', e);
+        }
+      }
+    };
+
+    startWatching();
+
+    return () => {
+      isMounted = false;
+      if (webWatchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(webWatchId);
+      }
+      if (nativeLocationSub) {
+        nativeLocationSub.remove();
+      }
+    };
+  }, []);
 
   // Pull to refresh
   const onRefresh = useCallback(async () => {
@@ -626,12 +744,33 @@ export function AttendanceScreen() {
       Number(effectiveBranchLongitude)
     );
     const maxRadius = Number(effectiveRadiusMeters) || 100;
+
+    // Toleransi Deviasi Fisik GPS di Dalam Toko / Ruko:
+    // KHUSUS PENGGUNA IPHONE (Apple iOS):
+    // Karena Apple Safari di web memblokir pembacaan Wi-Fi BSSID dan murni menggunakan satelit GPS
+    // yang terbiaskan oleh atap seng/beton ruko toko (deviasi alami 10-15 meter).
+    // Untuk Android dan perangkat lain: TETAP MURNI KETAT (tolerance = 0).
+    let tolerance = 0;
+    if (isIosDevice) {
+      if (maxRadius <= 30) {
+        // Khusus iPhone pada cabang ber-radius sempit (seperti Kulim KM 18 = 20m), toleransi ruko 12 meter
+        tolerance = 12;
+      } else if (gpsAccuracy != null && gpsAccuracy > 15) {
+        tolerance = Math.min(Math.round(gpsAccuracy * 0.35), 15);
+      }
+    }
+
+    const effectiveDistance = Math.max(0, dist - tolerance);
+    const isWithinRadius = effectiveDistance <= maxRadius;
+
     return {
       distance: dist,
-      isWithinRadius: dist <= maxRadius,
+      effectiveDistance,
+      tolerance,
+      isWithinRadius,
       maxRadius
     };
-  }, [currentCoords, isBranchLocationConfigured, effectiveBranchLatitude, effectiveBranchLongitude, effectiveRadiusMeters]);
+  }, [currentCoords, isBranchLocationConfigured, effectiveBranchLatitude, effectiveBranchLongitude, effectiveRadiusMeters, gpsAccuracy, isIosDevice]);
 
   // Validasi mutlak apakah posisi perangkat berada di luar batas radius kantor
   const isOutsideRadius = useMemo(() => {
@@ -1940,6 +2079,22 @@ export function AttendanceScreen() {
           </View>
         ) : null}
 
+        {/* PERINGATAN FITUR LOKASI TEPAT (PRECISE LOCATION) NONAKTIF DI IPHONE */}
+        {isIosDevice && gpsAccuracy != null && gpsAccuracy > 70 ? (
+          <View style={styles.preciseLocationWarningCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+              <MaterialIcons name="warning" size={18} color="#b91c1c" style={{ marginRight: 6 }} />
+              <Text style={styles.preciseLocationWarningTitle}>
+                Fitur "Lokasi Tepat" Terindikasi Mati di iPhone Anda
+              </Text>
+            </View>
+            <Text style={styles.preciseLocationWarningText}>
+              Akurasi GPS Anda sangat rendah (±{gpsAccuracy}m) karena Apple menyamarkan koordinat Anda ke menara seluler terdekat.{"\n\n"}
+              <Text style={{ fontWeight: 'bold' }}>Cara mengaktifkan:</Text> Buka Pengaturan iPhone → Privasi & Keamanan → Layanan Lokasi → Safari, lalu aktifkan tombol <Text style={{ fontWeight: 'bold' }}>Lokasi Tepat (Precise Location)</Text>.
+            </Text>
+          </View>
+        ) : null}
+
         {/* PANDUAN AKURASI LOKASI KHUSUS PENGGUNA IPHONE (SAFARI WEB) */}
         {isIosDevice && (isOutsideRadius || (gpsAccuracy != null && gpsAccuracy > 35)) ? (
           <View style={styles.iosGpsNoticeCard}>
@@ -3034,6 +3189,27 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 11.5,
     color: '#0369a1',
+    lineHeight: 16
+  },
+
+  // Peringatan Khusus Precise Location Nonaktif
+  preciseLocationWarningCard: {
+    backgroundColor: '#fef2f2',
+    borderWidth: 1.5,
+    borderColor: '#fca5a5',
+    borderRadius: theme.radius.m,
+    padding: theme.spacing.m,
+    marginHorizontal: theme.spacing.l,
+    marginTop: 10
+  },
+  preciseLocationWarningTitle: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#991b1b'
+  },
+  preciseLocationWarningText: {
+    fontSize: 11.5,
+    color: '#b91c1c',
     lineHeight: 16
   },
 
